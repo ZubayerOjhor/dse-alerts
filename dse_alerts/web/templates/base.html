@@ -4,27 +4,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}dse-alerts{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
+<script>try{var t=localStorage.getItem('dse-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17l5-6 4 4 9-10' fill='none' stroke='%232a78d6' stroke-width='3'/%3E%3C/svg%3E">
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">dse-alerts</a>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 9-10" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>dse-alerts</a>
   {% if user %}
-  <nav>
-    <a href="/">Watchlist</a>
-    <a href="/alerts">Alerts</a>
-    <a href="/scorecard">Scorecard</a>
-    <a href="/rules">Rules</a>
-    <a href="/settings">Settings</a>
-    <form method="post" action="/logout" class="inline"><button class="link">Log out</button></form>
+  <nav class="main">
+    <a href="/" class="{{ 'active' if active == 'dashboard' }}">Overview</a>
+    <a href="/portfolio" class="{{ 'active' if active == 'portfolio' }}">Portfolio</a>
+    <a href="/targets" class="{{ 'active' if active == 'targets' }}">Targets</a>
+    <a href="/alerts" class="{{ 'active' if active == 'alerts' }}">Alerts</a>
+    <a href="/scorecard" class="{{ 'active' if active == 'scorecard' }}">Scorecard</a>
+    <a href="/rules" class="{{ 'active' if active == 'rules' }}">Rules</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' }}">Settings</a>
   </nav>
-  {% endif %}
+  {% else %}<span style="flex:1"></span>{% endif %}
+  <div class="right">
+    <div class="themes" title="Theme">
+      <button type="button" data-theme-pick="light" aria-label="Light theme"></button>
+      <button type="button" data-theme-pick="dark" aria-label="Dark theme"></button>
+      <button type="button" data-theme-pick="midnight" aria-label="Midnight theme"></button>
+      <button type="button" data-theme-pick="terminal" aria-label="Terminal theme"></button>
+    </div>
+    {% if user %}<form method="post" action="/logout" class="inline"><button class="link">Log out</button></form>{% endif %}
+  </div>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
 <footer>
-  <p>Automated observations about prices, volumes and filings on the Dhaka Stock Exchange. Not investment advice; no buy or sell recommendation is implied. Runs entirely on this machine.</p>
+  <p>Automated observations about prices, volumes and filings on the Dhaka Stock Exchange. Not investment advice; no buy or sell recommendation is implied. Runs entirely on this machine; the browser talks only to this server.</p>
 </footer>
+<script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>

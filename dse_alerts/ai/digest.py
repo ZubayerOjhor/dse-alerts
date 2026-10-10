@@ -72,11 +72,11 @@ def build_prompt(session: dt.date, alerts: list[Alert], symbols: list[str], evid
     return DSE_CONTEXT + "\n\nInput (JSON):\n" + json.dumps(payload, default=str, indent=1)
 
 
-def _via_anthropic(settings: Settings, prompt: str) -> str | None:
+def _via_anthropic(settings: Settings, prompt: str, api_key: str | None = None, model: str | None = None) -> str | None:
     import anthropic
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=120.0)
-    model = settings.anthropic_model
+    client = anthropic.Anthropic(api_key=api_key or settings.anthropic_api_key, timeout=120.0)
+    model = model or settings.anthropic_model
     kwargs: dict[str, Any] = {}
     if model.startswith(("claude-fable-5", "claude-opus-5", "claude-sonnet-5-5")):
         # server-side refusal fallbacks, recommended for these models; routes by refusal category
@@ -94,15 +94,22 @@ def _via_anthropic(settings: Settings, prompt: str) -> str | None:
     return text or None
 
 
-def _via_openai_compatible(settings: Settings, prompt: str, transport=None) -> str | None:
+def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base_url: str | None = None,
+                           api_key: str | None = None, model: str | None = None) -> str | None:
     import httpx
 
-    url = settings.openai_compat_base_url.rstrip("/") + "/chat/completions"
+    base_url = base_url or settings.openai_compat_base_url
+    api_key = settings.openai_compat_api_key if api_key is None else api_key
+    model = model or settings.openai_compat_model
+    url = base_url.rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}
-    if settings.openai_compat_api_key:
-        headers["Authorization"] = f"Bearer {settings.openai_compat_api_key}"
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    if "openrouter.ai" in base_url:
+        headers["HTTP-Referer"] = "https://github.com/ZubayerOjhor/dse-alerts"
+        headers["X-Title"] = "dse-alerts"
     body = {
-        "model": settings.openai_compat_model,
+        "model": model,
         "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
         "temperature": 0.3,
         "max_tokens": 700,
@@ -126,13 +133,19 @@ def write_digest(settings: Settings, session: dt.date, alerts: list[Alert], symb
     if not settings.ai_enabled or not alerts:
         return None
     prompt = build_prompt(session, alerts, symbols, evidence)
-    try:
-        if settings.ai_provider == "anthropic":
-            return _via_anthropic(settings, prompt)
-        if settings.ai_provider == "openai_compatible":
-            return _via_openai_compatible(settings, prompt)
-    except Exception:
-        log.exception("digest failed")
+    for p in settings.ai_chain():
+        try:
+            if p["kind"] == "anthropic":
+                text = _via_anthropic(settings, prompt, api_key=p["api_key"], model=p["model"])
+            else:
+                text = _via_openai_compatible(settings, prompt, base_url=p["base_url"], api_key=p["api_key"], model=p["model"])
+        except Exception:
+            log.exception("digest via %s failed", p["name"])
+            continue
+        if text:
+            log.info("digest written by %s (%s)", p["name"], p["model"])
+            return text
+        log.warning("digest via %s returned nothing; trying the next provider", p["name"])
     return None
 
 

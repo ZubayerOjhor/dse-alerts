@@ -1,6 +1,6 @@
-"""The web UI: a small server-rendered FastAPI app. No JavaScript framework, no external
-requests from the browser, no analytics. Everything it shows comes from the two local
-databases.
+"""The web UI: a server-rendered FastAPI app. No JavaScript framework, no external requests
+from the browser (the chart library is vendored), no analytics. Everything it shows comes
+from the two local databases.
 
 Run with ``dse web serve`` (uvicorn) or mount ``create_app()`` yourself.
 """
@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dse_alerts import engine
+from dse_alerts import engine, evidence, market, portfolio
 from dse_alerts.appdb import AppDB
 from dse_alerts.config import Settings, get_settings
 from dse_alerts.data.store import MarketStore
@@ -34,16 +34,27 @@ from dse_alerts.web.auth import (
 HERE = Path(__file__).parent
 
 
+def _isnan(x):
+    return x is None or (isinstance(x, float) and pd.isna(x))
+
+
 def _pct(x, digits=1):
-    if x is None or (isinstance(x, float) and pd.isna(x)):
-        return "–"
-    return f"{100 * float(x):+.{digits}f}%"
+    return "–" if _isnan(x) else f"{100 * float(x):+.{digits}f}%"
 
 
 def _num(x, digits=1):
-    if x is None or (isinstance(x, float) and pd.isna(x)):
-        return "–"
-    return f"{float(x):,.{digits}f}"
+    return "–" if _isnan(x) else f"{float(x):,.{digits}f}"
+
+
+def _records(df: pd.DataFrame) -> list[dict]:
+    if df is None or df.empty:
+        return []
+    out = df.astype(object).where(pd.notna(df), None).to_dict("records")
+    for r in out:
+        for k, v in r.items():
+            if isinstance(v, pd.Timestamp):
+                r[k] = v.date()
+    return out
 
 
 def create_app(settings: Settings | None = None, store: MarketStore | None = None, appdb: AppDB | None = None) -> FastAPI:
@@ -74,6 +85,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         u = current_user(request)
         if not u:
             raise HTTPException(status_code=303, headers={"Location": "/login"})
+        request.state.user = u
         return u
 
     def check_csrf(request: Request, token: str):
@@ -96,22 +108,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         stale = (dt.date.today() - last).days > 4 if last else True
         return {"last_session": last, "rows": s["rows"], "symbols": s["symbols"], "stale": stale}
 
-    def latest_rows(symbols: list[str]) -> pd.DataFrame:
-        if not symbols:
-            return pd.DataFrame()
-        ph = ",".join("?" * len(symbols))
-        with store.connect(read_only=True) as con:
-            return con.execute(
-                f"""
-                SELECT f.symbol, f.date, f.close, f.ret_1, f.ret_10, f.vol_ratio_20, f.hit_upper, f.hit_lower,
-                       f.upper_streak, f.lower_streak, i.name, i.category, i.sector
-                FROM features f JOIN instruments i USING (symbol)
-                WHERE f.symbol IN ({ph})
-                QUALIFY row_number() OVER (PARTITION BY f.symbol ORDER BY f.date DESC) = 1
-                ORDER BY f.symbol
-                """,
-                symbols,
-            ).df()
+    def watch_rows(user_id: int):
+        items = appdb.items(user_id)
+        kinds = {i["symbol"]: i["kind"] for i in items}
+        rows = _records(market.latest_rows(store, sorted(kinds)))
+        held = {h["symbol"] for h in appdb.holdings(user_id)}
+        for r in rows:
+            r["kind"] = "owned" if r["symbol"] in held else kinds.get(r["symbol"], "watch")
+        order = {"owned": 0, "target": 1, "watch": 2}
+        rows.sort(key=lambda r: (order.get(r["kind"], 9), r["symbol"]))
+        return items, rows
 
     # ---- auth pages -------------------------------------------------------------------
 
@@ -137,7 +143,8 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         email = email.strip().lower()
         if len(password) < 8:
             return render(request, "register.html", error="Use at least 8 characters.", first=not appdb.users())
-        if appdb.user(email) and appdb.user(email)["password_hash"]:
+        existing = appdb.user(email)
+        if existing and existing["password_hash"]:
             return render(request, "register.html", error="That email already has an account. Log in instead.", first=False)
         uid = appdb.ensure_user(email, hash_password(password), alert_to.strip() or None)
         appdb.ensure_watchlist(uid)
@@ -149,28 +156,32 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         resp.delete_cookie(SESSION_COOKIE)
         return resp
 
-    # ---- app pages --------------------------------------------------------------------
+    # ---- overview ---------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, user=Depends(require_user)):
-        request.state.user = user
-        items = appdb.items(user["id"])
-        rows = latest_rows([i["symbol"] for i in items])
-        today = appdb.alert_history(user["id"], limit=50)
+        items, rows = watch_rows(user["id"])
         ms = market_status()
-        recent_alerts = [a for a in today if ms["last_session"] and a["session_date"] == ms["last_session"].isoformat()]
-        return render(request, "dashboard.html", items=items, rows=rows.to_dict("records"), market=ms,
-                      alerts=recent_alerts, history=today[:20])
+        history = appdb.alert_history(user["id"], limit=50)
+        today = [a for a in history if ms["last_session"] and a["session_date"] == ms["last_session"].isoformat()]
+        val = portfolio.valuation(store, appdb, user["id"])
+        ups = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] > 0)
+        downs = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] < 0)
+        breadth = {"up": ups, "down": downs, "flat": len(rows) - ups - downs, "total": len(rows)}
+        return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
+                      index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
+                      total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth)
+
+    # ---- watchlist actions ------------------------------------------------------------
 
     @app.post("/watchlist/add")
-    def add_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
+    def add_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), kind: str = Form("watch"), user=Depends(require_user)):
         check_csrf(request, csrf)
         sym = symbol.strip().upper()
-        inst = store.instruments()
-        if sym not in set(inst["symbol"]):
+        if sym not in set(store.instruments()["symbol"]):
             raise HTTPException(status_code=404, detail=f"{sym} is not a DSE trading code")
-        appdb.add_item(appdb.ensure_watchlist(user["id"]), sym)
-        return RedirectResponse("/", status_code=303)
+        appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, kind="target" if kind == "target" else "watch")
+        return RedirectResponse(request.headers.get("referer") or "/", status_code=303)
 
     @app.post("/watchlist/remove")
     def remove_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
@@ -178,29 +189,79 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         appdb.remove_item(appdb.ensure_watchlist(user["id"]), symbol.strip().upper())
         return RedirectResponse("/", status_code=303)
 
+    @app.post("/watchlist/kind")
+    def set_kind(request: Request, symbol: str = Form(...), kind: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        sym = symbol.strip().upper()
+        wl = appdb.ensure_watchlist(user["id"])
+        if sym not in {i["symbol"] for i in appdb.items(user["id"])}:
+            appdb.add_item(wl, sym, kind=kind)
+        else:
+            appdb.set_item_kind(wl, sym, "target" if kind == "target" else "watch")
+        return RedirectResponse(request.headers.get("referer") or f"/symbol/{sym}", status_code=303)
+
+    # ---- portfolio & targets ----------------------------------------------------------
+
+    @app.get("/portfolio", response_class=HTMLResponse)
+    def portfolio_page(request: Request, user=Depends(require_user)):
+        val = portfolio.valuation(store, appdb, user["id"])
+        if not val["total"]:
+            return render(request, "portfolio.html", active="portfolio", total=None, as_of=None)
+        pos = val["positions"]
+        sparks = market.latest_rows(store, sorted(pos["symbol"].unique()))[["symbol", "spark"]]
+        pos = pos.merge(sparks, on="symbol", how="left")
+        groups = []
+        for name, sub in pos.groupby("account", sort=True):
+            groups.append({"name": name, "rows": _records(sub.sort_values("value", ascending=False))})
+        hist = portfolio.value_history(store, appdb, user["id"], 250)
+        return render(request, "portfolio.html", active="portfolio", total=val["total"], as_of=val["as_of"],
+                      accounts=_records(val["accounts"]), positions_by_account=groups,
+                      sectors=_records(portfolio.by_group(pos, "sector")), history_chart=market.value_series(hist))
+
+    @app.get("/targets", response_class=HTMLResponse)
+    def targets_page(request: Request, user=Depends(require_user)):
+        syms = [i["symbol"] for i in appdb.items(user["id"]) if i["kind"] == "target"]
+        rows = evidence.target_rows(store, syms)
+        for r in rows:
+            r["spark"] = market.spark_path(r.pop("closes", []))
+        return render(request, "targets.html", active="targets", rows=rows)
+
+    @app.post("/accounts/rename")
+    def rename_account(request: Request, account_id: int = Form(...), name: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        if any(a["id"] == account_id for a in appdb.accounts(user["id"])) and name.strip():
+            appdb.rename_account(account_id, name.strip())
+        return RedirectResponse("/settings", status_code=303)
+
+    # ---- symbol -----------------------------------------------------------------------
+
     @app.get("/symbol/{symbol}", response_class=HTMLResponse)
     def symbol_page(request: Request, symbol: str, user=Depends(require_user)):
-        request.state.user = user
         sym = symbol.upper()
         with store.connect(read_only=True) as con:
-            hist = con.execute(
-                "SELECT date, open, high, low, close, volume, ret_1, ret_10, vol_ratio_20, hit_upper, hit_lower, sma_20, sma_50 "
-                "FROM features WHERE symbol = ? ORDER BY date DESC LIMIT 60", [sym]).df()
             inst = con.execute("SELECT * FROM instruments WHERE symbol = ?", [sym]).df()
+            if inst.empty:
+                raise HTTPException(status_code=404, detail="unknown symbol")
+            last = con.execute("SELECT date, close, ret_1, volume, vol_ratio_20 FROM features WHERE symbol = ? ORDER BY date DESC LIMIT 1", [sym]).df()
             stats = con.execute("SELECT * FROM symbol_stats WHERE symbol = ?", [sym]).df() \
                 if con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='symbol_stats'").fetchone()[0] else pd.DataFrame()
             fund = con.execute("SELECT * FROM fundamentals WHERE symbol = ? ORDER BY as_of DESC LIMIT 1", [sym]).df()
-            news = con.execute("SELECT * FROM news WHERE symbol = ? ORDER BY date DESC LIMIT 10", [sym]).df()
+            news = con.execute("SELECT * FROM news WHERE symbol = ? ORDER BY date DESC LIMIT 8", [sym]).df()
             divs = con.execute("SELECT * FROM dividends WHERE symbol = ? ORDER BY declared_on DESC LIMIT 5", [sym]).df()
-        if inst.empty:
-            raise HTTPException(status_code=404, detail="unknown symbol")
+        inst_d = _records(inst)[0]
+        stats_s = stats.iloc[0] if not stats.empty else None
+        fund_s = fund.iloc[0] if not fund.empty else None
+        ev = evidence.evidence(store, sym, stats_s, fund_s, inst_d.get("sector"), news, divs)
         item = next((i for i in appdb.items(user["id"]) if i["symbol"] == sym), None)
-        closes = hist["close"].tolist()[::-1]
-        return render(request, "symbol.html", symbol=sym, inst=inst.iloc[0].to_dict(),
-                      stats=stats.iloc[0].to_dict() if not stats.empty else None,
-                      fund=fund.iloc[0].to_dict() if not fund.empty else None,
-                      hist=hist.to_dict("records"), news=news.to_dict("records"), divs=divs.to_dict("records"),
-                      item=item, rules=RULES, opt_in=OPT_IN, spark=_sparkline(closes),
+        held = [h for h in appdb.holdings(user["id"]) if h["symbol"] == sym]
+        holding = None
+        if held:
+            q = sum(h["quantity"] for h in held)
+            holding = {"quantity": q, "avg_cost": sum(h["quantity"] * h["avg_cost"] for h in held) / q if q else None}
+        return render(request, "symbol.html", active="", symbol=sym, inst=inst_d, last=_records(last)[0] if not last.empty else {},
+                      ev=ev, stats=_records(stats)[0] if not stats.empty else None, fund=_records(fund)[0] if not fund.empty else None,
+                      news=_records(news), divs=_records(divs), item=item, holding=holding, rules=RULES, opt_in=OPT_IN,
+                      price_chart=market.ohlc(store, sym, "1y"), rel_chart=market.relative_series(store, sym, 250),
                       alerts=[a for a in appdb.alert_history(user["id"], 500) if a["symbol"] == sym][:20])
 
     @app.post("/symbol/{symbol}/rules")
@@ -216,7 +277,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                 raw = str(form.get(f"{r.id}__{k}", "")).strip()
                 if raw == "":
                     continue
-                if k in ("pct",):
+                if k == "pct":
                     params[k] = float(raw) / 100.0
                 elif isinstance(default, bool):
                     params[k] = raw.lower() in ("1", "true", "on", "yes")
@@ -238,10 +299,27 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, cfg, note)
         return RedirectResponse(f"/symbol/{sym}", status_code=303)
 
+    # ---- JSON for charts --------------------------------------------------------------
+
+    @app.get("/api/ohlc/{symbol}")
+    def api_ohlc(symbol: str, range: str = "1y", user=Depends(require_user)):
+        return JSONResponse(market.ohlc(store, symbol.upper(), range if range in market.RANGE_SESSIONS else "1y"))
+
+    @app.get("/api/index")
+    def api_index(range: str = "6m", user=Depends(require_user)):
+        return JSONResponse({"series": [{"name": "DSEX", "data": market.index_series(store, market.RANGE_SESSIONS.get(range, 130))}]})
+
+    @app.get("/instruments.json")
+    def instruments_json(user=Depends(require_user)):
+        inst = store.instruments()
+        inst = inst[inst["tradeable"].fillna(False).astype(bool)]
+        return [{"symbol": r.symbol, "name": "" if r.name is None or pd.isna(r.name) else str(r.name)} for r in inst.itertuples()]
+
+    # ---- alerts, scorecard, rules, settings -------------------------------------------
+
     @app.get("/alerts", response_class=HTMLResponse)
     def alerts_page(request: Request, user=Depends(require_user)):
-        request.state.user = user
-        return render(request, "alerts.html", alerts=appdb.alert_history(user["id"], 300))
+        return render(request, "alerts.html", active="alerts", alerts=appdb.alert_history(user["id"], 300))
 
     @app.post("/alerts/check")
     def check_now(request: Request, csrf: str = Form(...), user=Depends(require_user)):
@@ -253,15 +331,13 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     def scorecard_page(request: Request, user=Depends(require_user)):
         from dse_alerts import scorecard as sc
 
-        request.state.user = user
         df = sc.outcomes(store, appdb, user["id"])
         agg = sc.by_rule(df, sc.load_expectation(settings))
-        return render(request, "scorecard.html", rows=df.head(200).to_dict("records"), by_rule=agg.to_dict("records"),
+        return render(request, "scorecard.html", active="scorecard", rows=_records(df.head(200)), by_rule=_records(agg),
                       pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df))
 
     @app.get("/rules", response_class=HTMLResponse)
     def rules_page(request: Request, user=Depends(require_user)):
-        request.state.user = user
         cal = {}
         p = settings.dse_data_dir / "calibration.json"
         if p.exists():
@@ -269,12 +345,12 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                 cal = {e["event"]: e for e in json.loads(p.read_text(encoding="utf-8")).get("event_stats", [])}
             except (ValueError, KeyError):
                 cal = {}
-        return render(request, "rules.html", rules=RULES, opt_in=OPT_IN, cal=cal)
+        return render(request, "rules.html", active="rules", rules=RULES, opt_in=OPT_IN, cal=cal)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, user=Depends(require_user)):
-        request.state.user = user
-        return render(request, "settings.html", runs=appdb.last_runs(10), market=market_status(), msg=None)
+        return render(request, "settings.html", active="settings", runs=appdb.last_runs(10), market=market_status(), msg=None,
+                      accounts=appdb.accounts(user["id"]))
 
     @app.post("/settings")
     def save_settings(request: Request, csrf: str = Form(...), alert_to: str = Form(""), digest: str = Form(""),
@@ -284,18 +360,11 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                   "telegram_chat_id": telegram_chat_id.strip() or None}
         if password:
             if len(password) < 8:
-                request.state.user = user
-                return render(request, "settings.html", runs=appdb.last_runs(10), market=market_status(), msg="Password too short.")
+                return render(request, "settings.html", active="settings", runs=appdb.last_runs(10), market=market_status(),
+                              msg="Password too short.", accounts=appdb.accounts(user["id"]))
             fields["password_hash"] = hash_password(password)
         appdb.update_user(user["id"], **fields)
         return RedirectResponse("/settings", status_code=303)
-
-    @app.get("/instruments.json")
-    def instruments_json(user=Depends(require_user)):
-        inst = store.instruments()
-        inst = inst[inst["tradeable"].fillna(False).astype(bool)]
-        return [{"symbol": r.symbol, "name": "" if r.name is None or pd.isna(r.name) else str(r.name)}
-                for r in inst.itertuples()]
 
     @app.exception_handler(HTTPException)
     async def _redirects(request: Request, exc: HTTPException):
@@ -305,15 +374,3 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         return render(request, "error.html", status_code=exc.status_code, status=exc.status_code, detail=exc.detail)
 
     return app
-
-
-def _sparkline(values: list[float], w: int = 240, h: int = 48) -> str:
-    """Inline SVG path for a list of closes (oldest first)."""
-    vals = [v for v in values if v is not None and not pd.isna(v)]
-    if len(vals) < 2:
-        return ""
-    lo, hi = min(vals), max(vals)
-    span = (hi - lo) or 1.0
-    step = w / (len(vals) - 1)
-    pts = [f"{i * step:.1f},{h - (v - lo) / span * (h - 4) - 2:.1f}" for i, v in enumerate(vals)]
-    return "M" + " L".join(pts)

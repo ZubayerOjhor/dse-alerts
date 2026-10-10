@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% set active = "portfolio" %}
+{% block title %}Portfolio · dse-alerts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Portfolio</h1><div class="sub">Valued at the close of {{ as_of }}. Positions as imported; quantities and costs come from your statements.</div></div>
+</div>
+
+{% if not total %}
+<div class="card"><p class="muted">No holdings yet. Put them in a CSV (account,symbol,quantity,avg_cost) and run <code>dse portfolio import data/holdings.csv --email you@example.com</code>.</p></div>
+{% else %}
+<div class="tiles">
+  <div class="tile"><div class="label">Market value</div><div class="value">৳ {{ total.value | num(0) }}</div>
+    <div class="delta {{ 'up' if total.day_change > 0 else 'down' if total.day_change < 0 else 'flat' }}">{{ '+' if total.day_change >= 0 }}{{ total.day_change | num(0) }} ({{ total.day_change_pct | pct(2) }}) today</div></div>
+  <div class="tile"><div class="label">Cost</div><div class="value">৳ {{ total.cost | num(0) }}</div><div class="note">{{ total.positions }} positions, {{ total.symbols }} companies</div></div>
+  <div class="tile"><div class="label">Unrealised P&amp;L</div><div class="value {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 }}">{{ '+' if total.pnl >= 0 }}{{ total.pnl | num(0) }}</div>
+    <div class="delta {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 else 'flat' }}">{{ total.pnl_pct | pct }}</div></div>
+  {% if total.statement_value %}
+  <div class="tile"><div class="label">Since statement</div><div class="value {{ 'up' if total.value > total.statement_value else 'down' }}">{{ ((total.value / total.statement_value) - 1) | pct }}</div>
+    <div class="note">statement value ৳ {{ total.statement_value | num(0) }}</div></div>
+  {% endif %}
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Book value vs cost, last 250 sessions</h2>
+    <p class="muted small" style="margin-top:-6px">Today's quantities priced at each session's close: what this book was worth, not a performance record.</p>
+    <div id="pv" class="chart" data-chart="lines" data-src="pv-data"></div>
+    <script type="application/json" id="pv-data">{{ history_chart | tojson }}</script>
+  </div>
+  <div class="card">
+    <h2>By sector</h2>
+    {% for s in sectors %}
+    <div class="hbar"><span>{{ s.sector or "–" }}</span><div class="bar"><span style="width: {{ (100 * s.weight) | round(1) }}%"></span></div><span class="num {{ 'up' if s.pnl > 0 else 'down' if s.pnl < 0 }}">{{ (100 * s.weight) | round(1) }}% · {{ '+' if s.pnl >= 0 }}{{ s.pnl | num(0) }}</span></div>
+    {% endfor %}
+    <h2 style="margin-top:16px">By account</h2>
+    <table class="compact"><thead><tr><th>Account</th><th class="num">Positions</th><th class="num">Cost</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Today</th></tr></thead><tbody>
+    {% for a in accounts %}
+    <tr><td>{{ a.account }}</td><td class="num">{{ a.positions }}</td><td class="num">{{ a.cost | num(0) }}</td><td class="num">{{ a.value | num(0) }}</td>
+        <td class="num {{ 'up' if a.pnl > 0 else 'down' if a.pnl < 0 }}">{{ '+' if a.pnl >= 0 }}{{ a.pnl | num(0) }} ({{ a.pnl_pct | pct }})</td>
+        <td class="num {{ 'up' if a.day_change > 0 else 'down' if a.day_change < 0 }}">{{ '+' if a.day_change >= 0 }}{{ a.day_change | num(0) }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Positions</h2>
+  <table class="compact">
+    <thead><tr><th>Symbol</th><th>Cat.</th><th>Sector</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">Close</th><th class="num">Today</th><th class="num">Cost</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">P&amp;L %</th><th class="num">Weight</th><th>60 sessions</th></tr></thead>
+    <tbody>
+    {% for acc in positions_by_account %}
+    <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>
+    {% for p in acc.rows %}
+    <tr>
+      <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a><div class="muted small">{{ p.name or "" }}</div></td>
+      <td>{% if p.category %}<span class="badge cat-{{ p.category }}">{{ p.category }}</span>{% endif %}</td>
+      <td class="muted small">{{ p.sector or "" }}</td>
+      <td class="num">{{ p.quantity | num(0) }}</td><td class="num">{{ p.avg_cost | num(2) }}</td><td class="num">{{ p.close | num }}</td>
+      <td class="num {{ 'up' if p.ret_1 and p.ret_1 > 0 else 'down' if p.ret_1 and p.ret_1 < 0 else '' }}">{{ p.ret_1 | pct }}</td>
+      <td class="num">{{ p.cost | num(0) }}</td><td class="num">{{ p.value | num(0) }}</td>
+      <td class="num {{ 'up' if p.pnl > 0 else 'down' if p.pnl < 0 }}">{{ '+' if p.pnl >= 0 }}{{ p.pnl | num(0) }}</td>
+      <td class="num {{ 'up' if p.pnl > 0 else 'down' if p.pnl < 0 }}">{{ p.pnl_pct | pct }}</td>
+      <td class="num">{{ (100 * p.weight) | round(1) }}%</td>
+      <td><svg class="spark {{ 'up' if p.ret_20 and p.ret_20 > 0 else 'down' if p.ret_20 and p.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ p.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

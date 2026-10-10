@@ -66,11 +66,32 @@ CREATE TABLE IF NOT EXISTS runs (
     detail TEXT
 );
 CREATE INDEX IF NOT EXISTS alerts_user_date ON alerts(user_id, session_date);
+CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,                -- e.g. a BO account or broker
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, name)
+);
+CREATE TABLE IF NOT EXISTS holdings (
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    symbol TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    avg_cost REAL NOT NULL,            -- per share, in Taka
+    statement_price REAL,              -- market price on the statement the holding was taken from
+    statement_date TEXT,
+    margin TEXT,                       -- marginable | non-marginable | NULL
+    note TEXT,
+    updated_at TEXT NOT NULL,
+    UNIQUE (account_id, symbol)
+);
 """
 
 # columns added after the first release; applied when missing
 MIGRATIONS = [
     ("users", "telegram_chat_id", "ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
+    ("watchlist_items", "kind", "ALTER TABLE watchlist_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'watch'"),  # watch | target
 ]
 
 
@@ -149,16 +170,18 @@ class AppDB:
                 "INSERT INTO watchlists (user_id, name, created_at) VALUES (?, ?, ?)", (user_id, name, _now())
             ).lastrowid
 
-    def add_item(self, watchlist_id: int, symbol: str, rules: dict | None = None, note: str | None = None) -> None:
+    def add_item(self, watchlist_id: int, symbol: str, rules: dict | None = None, note: str | None = None,
+                 kind: str | None = None) -> None:
         with self.connect() as con:
             con.execute(
                 """
-                INSERT INTO watchlist_items (watchlist_id, symbol, rules_json, note, added_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO watchlist_items (watchlist_id, symbol, rules_json, note, added_at, kind)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
-                    rules_json = excluded.rules_json, note = coalesce(excluded.note, watchlist_items.note)
+                    rules_json = excluded.rules_json, note = coalesce(excluded.note, watchlist_items.note),
+                    kind = coalesce(?, watchlist_items.kind)
                 """,
-                (watchlist_id, symbol.upper().strip(), json.dumps(rules or {}), note, _now()),
+                (watchlist_id, symbol.upper().strip(), json.dumps(rules or {}), note, _now(), kind or "watch", kind),
             )
 
     def remove_item(self, watchlist_id: int, symbol: str) -> None:
@@ -170,13 +193,79 @@ class AppDB:
         with self.connect() as con:
             rows = con.execute(
                 """
-                SELECT wi.symbol, wi.rules_json, wi.note, w.name AS watchlist
+                SELECT wi.symbol, wi.rules_json, wi.note, wi.kind, w.name AS watchlist
                 FROM watchlist_items wi JOIN watchlists w ON w.id = wi.watchlist_id
                 WHERE w.user_id = ? ORDER BY w.name, wi.symbol
                 """,
                 (user_id,),
             ).fetchall()
-        return [{"symbol": r["symbol"], "rules": json.loads(r["rules_json"]), "note": r["note"], "watchlist": r["watchlist"]} for r in rows]
+        out = [{"symbol": r["symbol"], "rules": json.loads(r["rules_json"]), "note": r["note"],
+                "kind": r["kind"] or "watch", "watchlist": r["watchlist"]} for r in rows]
+        # everything the user holds is watched as well, with default rules unless tuned
+        held = {h["symbol"] for h in self.holdings(user_id)}
+        seen = {i["symbol"] for i in out}
+        for i in out:
+            if i["symbol"] in held:
+                i["kind"] = "owned"
+        for sym in sorted(held - seen):
+            out.append({"symbol": sym, "rules": {}, "note": None, "kind": "owned", "watchlist": "Holdings"})
+        return out
+
+    def set_item_kind(self, watchlist_id: int, symbol: str, kind: str) -> None:
+        with self.connect() as con:
+            con.execute("UPDATE watchlist_items SET kind = ? WHERE watchlist_id = ? AND symbol = ?",
+                        (kind, watchlist_id, symbol.upper().strip()))
+
+    # ---- accounts & holdings ----------------------------------------------------------
+
+    def ensure_account(self, user_id: int, name: str) -> int:
+        with self.connect() as con:
+            row = con.execute("SELECT id FROM accounts WHERE user_id = ? AND name = ?", (user_id, name)).fetchone()
+            if row:
+                return row["id"]
+            return con.execute("INSERT INTO accounts (user_id, name, created_at) VALUES (?, ?, ?)",
+                               (user_id, name, _now())).lastrowid
+
+    def rename_account(self, account_id: int, name: str) -> None:
+        with self.connect() as con:
+            con.execute("UPDATE accounts SET name = ? WHERE id = ?", (name, account_id))
+
+    def accounts(self, user_id: int) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return con.execute("SELECT * FROM accounts WHERE user_id = ? ORDER BY name", (user_id,)).fetchall()
+
+    def upsert_holding(self, account_id: int, symbol: str, quantity: float, avg_cost: float,
+                       statement_price: float | None = None, statement_date: str | None = None,
+                       margin: str | None = None, note: str | None = None) -> None:
+        with self.connect() as con:
+            con.execute(
+                """
+                INSERT INTO holdings (account_id, symbol, quantity, avg_cost, statement_price, statement_date, margin, note, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, symbol) DO UPDATE SET
+                    quantity = excluded.quantity, avg_cost = excluded.avg_cost,
+                    statement_price = coalesce(excluded.statement_price, holdings.statement_price),
+                    statement_date = coalesce(excluded.statement_date, holdings.statement_date),
+                    margin = coalesce(excluded.margin, holdings.margin),
+                    note = coalesce(excluded.note, holdings.note), updated_at = excluded.updated_at
+                """,
+                (account_id, symbol.upper().strip(), quantity, avg_cost, statement_price, statement_date, margin, note, _now()),
+            )
+
+    def remove_holding(self, account_id: int, symbol: str) -> None:
+        with self.connect() as con:
+            con.execute("DELETE FROM holdings WHERE account_id = ? AND symbol = ?", (account_id, symbol.upper().strip()))
+
+    def holdings(self, user_id: int) -> list[dict]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT h.*, a.name AS account FROM holdings h JOIN accounts a ON a.id = h.account_id
+                WHERE a.user_id = ? ORDER BY a.name, h.symbol
+                """,
+                (user_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ---- alerts -----------------------------------------------------------------------
 

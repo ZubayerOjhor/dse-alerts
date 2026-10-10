@@ -1,80 +1,101 @@
 # dse-alerts
 
-**Self-hosted stock alerts for the Dhaka Stock Exchange.** Add the companies you follow,
-pick the conditions you care about, and get an email when they happen. Rules are tuned to
-how the DSE actually behaves (circuit-breaker slabs, A/B/Z categories, price-sensitive
-news, record dates) and calibrated on 25 years of daily data, so an alert means something
-instead of firing every other day.
+**Self-hosted stock alerts and a personal analytics desk for the Dhaka Stock Exchange.**
+Add the companies you hold or are considering, pick the conditions you care about, and get
+an email and a Telegram message after each session when something happened. Rules are
+tuned to how the DSE actually behaves (circuit-breaker slabs, A/B/Z categories, price-sensitive
+filings, record dates) and calibrated on 14 years of daily data, so an alert means something
+instead of firing every other day. The web UI shows what is true about each stock right now,
+values your portfolio, and grades the alerts it sent you.
 
-> Status: feature-complete and running daily; screenshots and the public release are next.
+> **The opposite of a tipping app.** It never tells you what to buy. It tells you what
+> happened, how unusual that is for that stock, and what the record says about such events.
 
-## Principles
+![Overview](docs/screens/overview-light.png)
 
-* **Your data stays yours.** Everything runs on your machine or your own server. No
-  telemetry, no accounts anywhere, no third party sees your watchlist. Market data is
-  fetched by you, from DSE, into a local DuckDB file.
-* **Alerts are facts, not advice.** "GP closed at its lower circuit, volume 3.4x its 20-day
-  average, no price-sensitive news filed" is an alert. "Buy GP" is not, and the tool never
-  says it.
-* **Optional extras stay optional.** Email needs an SMTP login; the AI digest needs an API
-  key (Claude, or any OpenAI-compatible endpoint such as Groq or a local Ollama). Without
-  either, alerts still run and land in a local outbox.
-
-## Phase 1: data layer (done)
-
-```bash
-pip install -e .
-dse data bootstrap     # downloads the 1999-2025 archive (77 MB) from Mendeley, cleans it, loads DuckDB
-dse data refresh       # pulls everything newer from dse.com.bd (daily prices, PSI news, dividends)
-dse data instruments   # company profiles, categories, sectors, fundamentals
-dse data validate      # proves the archive matches the live site where they overlap
-dse data status
-```
-
-What that gives you today (checked 2026-10-10):
+## What you get
 
 | | |
 |---|---|
-| Daily OHLCV rows | 1.28 million, 2012-10-01 to the last session, 716 instruments |
-| Currently tradeable | 395 (equities + mutual funds), 394 with sector, category, P/E, EPS, free float, 52-week range |
-| Archive vs live agreement | 100% of closes on 7,062 overlapping rows, 10 stocks |
-| Index history | DSEX / DSES / DS30 per session since 2012-10 |
+| **Alerts** | 13 DSE-specific rules; each one states a fact about the latest session and carries the numbers behind it. Delivered by **email** (HTML, with your portfolio snapshot) and **Telegram**, and kept in a local outbox. |
+| **Calibrated thresholds** | "Big" means big *for that stock*: thresholds come from each company's own history (977k sessions, 2013–2026), not from a fixed percentage. Every rule is backtested and the numbers are published. |
+| **Portfolio** | Import your BO statements once; see market value, cost, unrealised P&L, the day's move, value history, allocation by sector, and every position with a 60-session sparkline. Several accounts are fine. |
+| **Targets** | Companies you are considering, side by side: 20/60/250-session moves, position in the 52-week range, trend vs moving averages, volume, P/E against the sector median, last filing. |
+| **Symbol page** | Candlesticks with SMA 20/50 and volume, the stock vs DSEX indexed to 100, "what is true right now" panels, fundamentals, filings, dividends, and the rule switches for that stock. |
+| **Scorecard** | What happened 5 and 20 sessions after each alert you were sent, next to the backtest's expectation. It grades the rules, not you. |
+| **AI summary (optional)** | A short written note per delivery from Groq, OpenRouter or Claude, in that order of preference. Told never to advise. Off unless you add a key. |
+| **Four themes** | Light, dark, midnight, terminal. Charts follow the theme. |
 
-Two archives exist for the years the DSE site no longer serves. One claims 25 years but its
-pre-2023 rows are misdated by months (its DSEX reads 7,356 in March 2021; the real index was
-~5,500), which a circuit-breaker consistency test exposed; it is used from 2023 only, as a
-fallback. The other, curated at two Dhaka universities, passes every test from October 2012
-and is the one you should download (one click; the README of `dse data bootstrap` says
-where). The audit is in [docs/data-quality.md](docs/data-quality.md).
+## Principles
 
-## Phase 2: calibration (done)
+* **Your data stays yours.** Everything runs on your machine, your own server or your own
+  GitHub account. No telemetry, no accounts anywhere, no third party sees your holdings.
+  Market data is fetched by you, from DSE, into a local DuckDB file. The browser talks only
+  to this server; the chart library is vendored.
+* **Alerts are facts, not advice.** "BEXIMCO closed at its upper circuit, 2.0 times a year
+  for this stock" is an alert. "Buy BEXIMCO" is not, and the tool never says it.
+* **Measured, not guessed.** The data was audited before it was trusted, the thresholds come
+  from the history, every rule has a backtest, and the system scores its own alerts.
+* **Optional extras stay optional.** Email needs an SMTP login; Telegram a bot token; the
+  AI summary an API key. Without any of them, alerts still run and land in `data/outbox/`.
+
+## Screens
+
+| Symbol page | Portfolio |
+|---|---|
+| ![Symbol](docs/screens/symbol-midnight.png) | ![Portfolio](docs/screens/portfolio-midnight.png) |
+
+| Targets | Email |
+|---|---|
+| ![Targets](docs/screens/targets-light.png) | ![Email](docs/screens/email.png) |
+
+More in [docs/screens](docs/screens).
+
+## Architecture
+
+![Architecture](docs/architecture.svg)
+
+## Quick start
 
 ```bash
-dse analysis features    # per-session returns, volume ratios, circuit-breaker hits, streaks, 250-day ranges
-dse analysis calibrate   # how often each candidate alert fires, and what followed -> docs/calibration.md
+git clone https://github.com/ZubayerOjhor/dse-alerts && cd dse-alerts
+python -m venv .venv && .venv\Scripts\activate        # Windows; on Linux/macOS: source .venv/bin/activate
+pip install -e ".[web,ai]"
+copy .env.example .env                                  # fill in what you use; blank is fine
+
+dse data bootstrap          # archive (auto-download; see below for the better one)
+dse data refresh            # everything newer from dse.com.bd: prices, news, dividends, index
+dse data instruments        # company profiles, categories, sectors, fundamentals (~2 min)
+dse analysis features       # per-session features
+dse analysis import-stats   # per-stock baselines (committed), or `dse analysis calibrate` to recompute
+
+dse alerts init --email you@example.com
+dse alerts add GP SQURPHARMA --email you@example.com
+dse portfolio import data/holdings.csv --email you@example.com   # optional: account,symbol,quantity,avg_cost,...
+dse alerts run --dry-run    # evaluate the latest session, print, change nothing
+dse web serve               # http://127.0.0.1:8000
 ```
 
-From 977k sessions across 395 stocks (2013 to 2026, floor-price period excluded): a fixed rule
-like "down 10% in 10 days" fires about 19 times a year *per stock* on the DSE, so thresholds
-have to be relative to each stock's own distribution, which `symbol_stats` now holds. Three
-sessions in a row at the lower circuit is rare (once in 50 stock-years) and is followed by a
-median -6% over the next 20 sessions; three in a row at the upper circuit has a +21% *mean*
-but a +1% median, i.e. a few runaway pumps and many fades. Full tables and the forward-return
-evidence for every candidate rule: [docs/calibration.md](docs/calibration.md).
+**History before 2024.** The DSE site only serves about a year of history. For everything
+older, download the curated archive by hand (its files are not exposed to scripts):
+[Mendeley 23553sm4tn](https://data.mendeley.com/datasets/23553sm4tn/4) → *Download All* →
+extract under `data/raw/mendeley_23553sm4tn/`, then run `dse data bootstrap` again. Without
+it, an automatically downloaded fallback archive supplies 2023 onward. Why only 2023, when
+that file claims 25 years: its pre-2023 rows are misdated by months, which a circuit-breaker
+consistency test exposed. The audit is in [docs/data-quality.md](docs/data-quality.md).
 
-## Phase 3: alerts (done)
+## Running it every day
 
-```bash
-dse alerts rules                                   # the catalogue
-dse alerts init --email you@example.com            # a user and their watchlist (alerts go to this address)
-dse alerts add GP SQURPHARMA BRACBANK --email you@example.com
-dse alerts add GP --email you@example.com --rules '{"big_drop": {"days": 10, "pct": 0.05}, "pe_level": {"max": 12}}'
-dse alerts run --dry-run                           # evaluate the latest session, print, change nothing
-dse alerts run                                     # record, write data/outbox/, email if SMTP is set
-dse alerts backtest                                # every rule with defaults: fires per stock-year, what followed
-```
+[docs/deploy.md](docs/deploy.md) covers three ways:
 
-Thirteen rules. Each states a fact about the latest session; none recommends anything:
+* **GitHub Actions** (free, nothing to host): fork, add `SMTP_USER` and `SMTP_PASSWORD`
+  secrets (a Gmail app password), optionally `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`,
+  `WATCHLIST_JSON` and `HOLDINGS_CSV`. It runs at 16:30 Bangladesh time on trading days and
+  caches market data between runs.
+* **Your own machine**: Task Scheduler or cron running `dse data refresh && dse analysis features && dse alerts run`.
+* **Docker**: `docker compose up -d` gives you the web UI and a scheduler.
+
+## The rules
 
 | Rule | Default | Fires per stock-year | Median 20-session move after |
 |---|---|---|---|
@@ -86,82 +107,45 @@ Thirteen rules. Each states a fact about the latest session; none recommends any
 | `vs_index`, `ma_cross`, `pe_level` | opt-in: diverged 5 pts from DSEX, crossed the 50-session average, P/E level | | |
 | `illiquid` | no trades in 5 of the last 10 sessions, when it begins | 0.8 | |
 
-The per-stock percentiles come from `symbol_stats` (phase 2), so "big" means big *for that
-stock*. A user who prefers an absolute number sets `pct` and that wins. Backtest figures are
-from 2013-2026 with the floor-price period excluded; regenerate them with `dse alerts backtest`.
+A fixed rule like "down 10% in 10 days" fires about 19 times a year *per stock* on the DSE;
+the per-stock percentiles bring `big_drop` down to about 4 episodes a year that are unusual
+for that company. Three sessions in a row at the lower circuit is rare (once in 50
+stock-years) and is followed by a median -6% over the next 20 sessions; three in a row at
+the upper circuit has a +21% *mean* but a +1% median, i.e. a few runaway pumps and many
+fades. All of it, with the forward-return evidence per rule: [docs/calibration.md](docs/calibration.md).
+Regenerate with `dse analysis calibrate` and `dse alerts backtest`.
 
-## Phase 4: delivery and the daily run (done)
+## Commands
 
-Email goes out over SMTP when `SMTP_USER` / `SMTP_PASSWORD` are set (a Gmail app password
-works); otherwise alerts land in `data/outbox/`. The daily run can live on GitHub Actions
-(fork, add two secrets, done), on your own machine via Task Scheduler or cron, or in Docker.
-Step by step: [docs/deploy.md](docs/deploy.md). The per-symbol baselines from the 14-year
-calibration are committed as [`calibration/symbol_stats.csv`](calibration/symbol_stats.csv)
-so a fresh machine needs only the last two years of live data.
-
-## Phase 5: web UI (done)
-
-```bash
-dse web serve        # http://127.0.0.1:8000
+```
+dse data        bootstrap | refresh | instruments | validate | status
+dse analysis    features | calibrate | export-stats | import-stats
+dse alerts      rules | init | add | remove | list | import | run | backtest | scorecard
+                test-email | test-telegram | telegram-id
+dse portfolio   import | show | target
+dse web         serve
 ```
 
-Create an account (it lives only in your local database), add trading codes, click a
-symbol to see its last 60 sessions, its own "what is unusual" baselines, fundamentals,
-filings and dividends, and to switch each rule on or off or override its threshold.
-"Check now" evaluates the latest session on the spot. The UI makes no requests to anything
-but itself.
+## Repository map
 
-### Scorecard: it grades its own alerts
-
-`/scorecard` in the UI (or `dse alerts scorecard --email you@example.com`) shows, for every
-alert you were actually sent, what the stock did 5 and 20 sessions later, what DSEX did
-over the same sessions, and the backtest's expectation for that rule. Alerts younger than
-20 sessions are marked pending. It grades the rules, not you, and an outcome is never
-turned into a recommendation.
-
-### Telegram (optional)
-
-Create a bot with @BotFather, put its token in `.env` as `TELEGRAM_BOT_TOKEN`, send the bot
-a message, run `dse alerts telegram-id` to find your chat id, and set it as
-`TELEGRAM_CHAT_ID` (or per user under Settings). Alerts then arrive in Telegram as well as,
-or instead of, email.
-
-## Phase 6: AI summary (optional)
-
-When an alert fires, a language model can turn the alert list into a short plain-English
-note: what happened, how unusual it is for that stock, what the backtest says about such
-events. It is told, in the system prompt, never to advise, never to predict, never to add
-facts. The rule-based alerts remain the source of truth and go out unchanged.
-
-Set `AI_PROVIDER` in `.env`:
-
-* `anthropic` with `ANTHROPIC_API_KEY` (model defaults to `claude-fable-5-1`; server-side
-  refusal fallbacks are enabled as that model recommends), or
-* `openai_compatible` with `OPENAI_COMPAT_BASE_URL`, `OPENAI_COMPAT_API_KEY` and
-  `OPENAI_COMPAT_MODEL`: Groq's free tier, OpenRouter's `:free` models, or a local Ollama.
-
-Leave it blank and nothing is sent anywhere.
-
-## Docker
-
-```bash
-cp .env.example .env    # fill in what you use
-docker compose up -d    # web on :8000 + a scheduler that runs the daily chain at 16:30 BDT
 ```
-
-## Plan
-
-| Phase | What | Status |
-|---|---|---|
-| 1 | Data layer: archive + live ingestion, validation, instrument profiles | done |
-| 2 | Calibration study: what "unusual" means per stock, measured on clean history | done |
-| 3 | Alert rules + engine + backtest of each rule | done |
-| 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | done |
-| 5 | Web UI: login, watchlists, alert settings, history | done |
-| 6 | AI digest (optional), Docker, scorecard, Telegram | done |
-| 7 | Screenshots, first real email, public release | next |
+dse_alerts/
+  data/        archive loaders, live provider (bdshare), DuckDB store, ingestion flows
+  analysis/    feature table, calibration study
+  rules/       the 13 rules and their backtest predicates
+  engine.py    evaluates rules per user and session; scorecard.py grades the outcomes
+  portfolio.py holdings valuation and history; evidence.py "what is true right now"
+  notify/      delivery context, text + HTML rendering, email, Telegram, outbox
+  ai/          optional summary via Groq / OpenRouter / Anthropic
+  web/         FastAPI app, templates, vendored chart library, four themes
+calibration/   symbol_stats.csv, the per-stock baselines from the 14-year calibration
+docs/          data-quality audit, calibration report, deployment guide, screenshots
+tests/         38 tests (archive cleaning, store semantics, rules, engine, web, email, portfolio)
+```
 
 ## Licence
 
-MIT. Market data belongs to its sources; see [docs/data-quality.md](docs/data-quality.md).
-This tool is for information only and is not investment advice.
+MIT. Market data belongs to its sources (see [docs/data-quality.md](docs/data-quality.md));
+the chart library is TradingView's lightweight-charts (Apache 2.0, vendored under
+`dse_alerts/web/static/vendor/`). This tool is for information only and is not investment
+advice.

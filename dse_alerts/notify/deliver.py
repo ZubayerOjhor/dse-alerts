@@ -1,4 +1,4 @@
-"""Delivery channels: console, local outbox (always), SMTP email (when configured)."""
+"""Delivery channels: console, local outbox (always), SMTP email and Telegram (when configured)."""
 
 from __future__ import annotations
 
@@ -10,31 +10,34 @@ from pathlib import Path
 
 from dse_alerts.config import Settings
 from dse_alerts.notify import render
+from dse_alerts.notify.context import DeliveryContext
 from dse_alerts.rules import Alert
 
 log = logging.getLogger(__name__)
 
-
-def to_outbox(outbox: Path, session: dt.date, email: str, alerts: list[Alert], symbols: list[str], digest: str | None = None) -> Path:
-    """Write the text rendering to data/outbox/<session>_<email>.txt and return the path."""
-    outbox.mkdir(parents=True, exist_ok=True)
-    safe = "".join(c if c.isalnum() or c in "@.-_" else "_" for c in email)
-    p = outbox / f"{session.isoformat()}_{safe}.txt"
-    p.write_text(render.subject(session, alerts) + "\n\n" + render.text(session, alerts, symbols, digest), encoding="utf-8")
-    return p
-
-
-def to_console(session: dt.date, email: str, alerts: list[Alert], symbols: list[str], digest: str | None = None) -> None:
-    print(f"--- {email}: {render.subject(session, alerts)}")
-    print(render.text(session, alerts, symbols, digest))
-
-
 TELEGRAM_LIMIT = 4000   # Telegram caps a message at 4096 characters
 
 
-def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = None) -> str:
+def to_outbox(outbox: Path, email: str, ctx: DeliveryContext) -> Path:
+    """Write the text rendering (and the HTML next to it) to data/outbox/ and return the text path."""
+    outbox.mkdir(parents=True, exist_ok=True)
+    safe = "".join(c if c.isalnum() or c in "@.-_" else "_" for c in email)
+    p = outbox / f"{ctx.session.isoformat()}_{safe}.txt"
+    p.write_text(render.subject(ctx.session, ctx.alerts) + "\n\n" + render.text(ctx), encoding="utf-8")
+    p.with_suffix(".html").write_text(render.html_body(ctx), encoding="utf-8")
+    return p
+
+
+def to_console(email: str, ctx: DeliveryContext) -> None:
+    print(f"--- {email}: {render.subject(ctx.session, ctx.alerts)}")
+    print(render.text(ctx))
+
+
+def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = None, ctx: DeliveryContext | None = None) -> str:
     """A compact plain-text rendering for chat: headline per alert, one detail line each."""
     lines = [f"DSE alerts, session {session.isoformat()}"]
+    if ctx and ctx.index.get("close"):
+        lines.append(f"DSEX {ctx.index['close']:,.0f} ({render._pct(ctx.index.get('ret_1'), 2)})")
     if digest:
         lines += ["", digest.strip()]
     if not alerts:
@@ -42,6 +45,11 @@ def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = No
     for a in render.sort_alerts(alerts):
         mark = {"high": "!!", "notable": "!", "info": "·"}.get(a.severity, "·")
         lines += ["", f"{mark} {a.headline}", f"   {a.detail}"]
+    if ctx and ctx.portfolio:
+        p = ctx.portfolio
+        sign = "+" if (p.get("day_change") or 0) >= 0 else ""
+        lines += ["", (f"Portfolio Tk {p['value']:,.0f}, {sign}{p.get('day_change') or 0:,.0f} today, "
+                       f"P&L {render._pct(p.get('pnl_pct'))}")]
     lines += ["", "Observations, not advice."]
     return "\n".join(lines)
 
@@ -100,16 +108,16 @@ def telegram_updates(settings: Settings, transport=None) -> list[dict]:
     return out
 
 
-def send_email(settings: Settings, to: str, session: dt.date, alerts: list[Alert], symbols: list[str], digest: str | None = None) -> bool:
+def send_email(settings: Settings, to: str, ctx: DeliveryContext) -> bool:
     """Send via SMTP (STARTTLS). Returns True on success; never raises on a mail error."""
     if not settings.email_enabled:
         return False
     msg = EmailMessage()
-    msg["Subject"] = render.subject(session, alerts)
+    msg["Subject"] = render.subject(ctx.session, ctx.alerts)
     msg["From"] = settings.alert_from or settings.smtp_user
     msg["To"] = to
-    msg.set_content(render.text(session, alerts, symbols, digest))
-    msg.add_alternative(render.html_body(session, alerts, symbols, digest), subtype="html")
+    msg.set_content(render.text(ctx))
+    msg.add_alternative("<!doctype html><html><head><meta charset=\"utf-8\"></head>" + render.html_body(ctx) + "</html>", subtype="html")
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
             s.ehlo()

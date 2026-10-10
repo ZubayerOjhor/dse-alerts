@@ -13,16 +13,75 @@ from rich.table import Table
 from dse_alerts.config import get_settings
 from dse_alerts.data import ingest
 from dse_alerts.data.store import MarketStore
+from dse_alerts.notify.context import build as build_context
 
 app = typer.Typer(no_args_is_help=True, help="Self-hosted alerts for the Dhaka Stock Exchange.")
 data_app = typer.Typer(no_args_is_help=True, help="Market data: bootstrap, refresh, validate, status.")
 analysis_app = typer.Typer(no_args_is_help=True, help="Feature table and calibration study.")
 alerts_app = typer.Typer(no_args_is_help=True, help="Watchlists, rules and alert runs.")
 web_app = typer.Typer(no_args_is_help=True, help="The web UI.")
+portfolio_app = typer.Typer(no_args_is_help=True, help="Holdings: import, value, targets.")
 app.add_typer(data_app, name="data")
 app.add_typer(analysis_app, name="analysis")
 app.add_typer(alerts_app, name="alerts")
 app.add_typer(web_app, name="web")
+app.add_typer(portfolio_app, name="portfolio")
+
+
+@portfolio_app.command(name="import")
+def portfolio_import(path: str = typer.Argument("data/holdings.csv"), email: str = typer.Option(...),
+                     watch: bool = typer.Option(True, help="Also add every held symbol to the watchlist")):
+    """Load holdings from CSV (account,symbol,quantity,avg_cost[,statement_price,statement_date,margin,note])."""
+    from dse_alerts import portfolio as pf
+
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}; run `dse alerts init --email {email}` first")
+    r = pf.import_csv(db, u["id"], Path(path))
+    if watch:
+        wl = db.ensure_watchlist(u["id"])
+        for h in db.holdings(u["id"]):
+            db.add_item(wl, h["symbol"])
+    rprint(f"{r['rows']} holdings across {len(r['accounts'])} account(s): {', '.join(r['accounts'])}")
+
+
+@portfolio_app.command(name="show")
+def portfolio_show(email: str = typer.Option(...)):
+    """Value the holdings at the latest session."""
+    from dse_alerts import portfolio as pf
+
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}")
+    v = pf.valuation(_store(), db, u["id"])
+    if v["positions"].empty:
+        rprint("No holdings. Import with `dse portfolio import data/holdings.csv --email ...`")
+        return
+    t = Table("account", "symbol", "qty", "avg cost", "close", "cost", "value", "P&L", "P&L %", "day")
+    for p in v["positions"].itertuples():
+        t.add_row(p.account, p.symbol, f"{p.quantity:,.0f}", f"{p.avg_cost:,.2f}", f"{p.close:,.1f}", f"{p.cost:,.0f}",
+                  f"{p.value:,.0f}", f"{p.pnl:+,.0f}", f"{100*p.pnl_pct:+.1f}%", f"{p.day_change:+,.0f}")
+    rprint(t)
+    tt = v["total"]
+    rprint(f"as of {v['as_of']}: cost Tk {tt['cost']:,.0f}, value Tk {tt['value']:,.0f}, P&L Tk {tt['pnl']:+,.0f} "
+           f"({100*tt['pnl_pct']:+.1f}%), today {tt['day_change']:+,.0f}")
+    for a in v["accounts"].itertuples():
+        rprint(f"  {a.account}: {a.positions} positions, value {a.value:,.0f}, P&L {a.pnl:+,.0f} ({100*a.pnl_pct:+.1f}%)")
+
+
+@portfolio_app.command(name="target")
+def portfolio_target(symbols: list[str], email: str = typer.Option(...), remove: bool = typer.Option(False)):
+    """Mark symbols as targets (companies you are considering buying); they are watched too."""
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}")
+    wl = db.ensure_watchlist(u["id"])
+    for s in symbols:
+        db.add_item(wl, s, kind="watch" if remove else "target")
+    rprint(f"targets: {', '.join(i['symbol'] for i in db.items(u['id']) if i['kind'] == 'target') or 'none'}")
 
 
 @web_app.command()
@@ -257,19 +316,20 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
         if r.new_alerts and s.ai_enabled and u and u["digest_enabled"]:
             summary = ai.write_digest(s, session, r.new_alerts, r.symbols, evidence)
             rprint("[green]AI summary written[/green]" if summary else "[yellow]AI summary unavailable; sending alerts without it[/yellow]")
-        deliver.to_console(session, r.email, r.new_alerts, r.symbols, summary)
+        ctx = build_context(_store(), db, r.user_id, session, r.new_alerts, summary, base_url=f"http://{s.app_host}:{s.app_port}")
+        deliver.to_console(r.email, ctx)
         if r.missing_symbols:
             rprint(f"[yellow]no data for:[/yellow] {', '.join(r.missing_symbols)}")
         if dry_run:
             continue
-        p = deliver.to_outbox(s.outbox_dir, session, r.email, r.new_alerts, r.symbols, summary)
+        p = deliver.to_outbox(s.outbox_dir, r.email, ctx)
         rprint(f"outbox: {p}")
         delivered = False
-        if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, session, r.new_alerts, r.symbols, summary):
+        if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, ctx):
             delivered = True
             rprint(f"emailed {r.alert_email}")
         chat = (dict(u).get("telegram_chat_id") if u else None) or s.telegram_chat_id
-        if r.new_alerts and s.telegram_enabled and chat and deliver.send_telegram(s, chat, deliver.telegram_text(session, r.new_alerts, summary)):
+        if r.new_alerts and s.telegram_enabled and chat and deliver.send_telegram(s, chat, deliver.telegram_text(session, r.new_alerts, summary, ctx)):
             delivered = True
             rprint(f"telegram -> chat {chat}")
         if delivered:
@@ -300,7 +360,9 @@ def test_email(email: str = typer.Option(..., help="User whose watchlist and add
         rprint("[red]no data to evaluate[/red]")
         raise typer.Exit(1)
     r = results[0]
-    ok = deliver.send_email(s, r.alert_email, session, r.alerts, r.symbols)
+    ctx = build_context(_store(), db, u["id"], session, r.alerts, None, base_url=f"http://{s.app_host}:{s.app_port}")
+    deliver.to_outbox(s.outbox_dir, r.email, ctx)
+    ok = deliver.send_email(s, r.alert_email, ctx)
     rprint(f"{'sent' if ok else '[red]failed[/red]'}: {len(r.alerts)} alert(s) for session {session} -> {r.alert_email}")
     if not ok:
         raise typer.Exit(1)
@@ -330,7 +392,8 @@ def test_telegram(email: str = typer.Option(..., help="User whose watchlist to u
         rprint("[red]no data to evaluate[/red]")
         raise typer.Exit(1)
     r = results[0]
-    ok = deliver.send_telegram(s, chat, deliver.telegram_text(session, r.alerts))
+    ctx = build_context(_store(), db, u["id"], session, r.alerts, None)
+    ok = deliver.send_telegram(s, chat, deliver.telegram_text(session, r.alerts, None, ctx))
     rprint(f"{'sent' if ok else '[red]failed[/red]'}: {len(r.alerts)} alert(s) for session {session} -> chat {chat}")
     if not ok:
         raise typer.Exit(1)

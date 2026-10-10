@@ -1,70 +1,112 @@
 {% extends "base.html" %}
+{% set active = "" %}
 {% block title %}{{ symbol }} · dse-alerts{% endblock %}
 {% block content %}
-<section class="row between">
+<div class="page-head">
   <div>
-    <h1>{{ symbol }} <span class="muted">{{ inst.name or "" }}</span></h1>
-    <p class="muted">{{ inst.sector or "" }}{% if inst.category %} · category {{ inst.category }}{% endif %}{% if inst.listing_year %} · listed {{ inst.listing_year }}{% endif %}</p>
+    <h1>{{ symbol }} <span class="muted" style="font-weight:500">{{ inst.name or "" }}</span></h1>
+    <div class="sub">{{ inst.sector or "" }}{% if inst.category %} · <span class="badge cat-{{ inst.category }}">category {{ inst.category }}</span>{% endif %}{% if inst.listing_year %} · listed {{ inst.listing_year }}{% endif %}
+      {% if holding %} · <span class="badge owned">you hold {{ holding.quantity | num(0) }} @ {{ holding.avg_cost | num(2) }}</span>{% endif %}
+      {% if item and item.kind == 'target' %} · <span class="badge target">target</span>{% endif %}</div>
   </div>
-  {% if not item %}
-  <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><button class="primary">Watch</button></form>
-  {% endif %}
-</section>
-
-<section class="grid2">
-  <div class="card">
-    <h2>Last 60 sessions</h2>
-    {% if spark %}<svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none"><path d="{{ spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{% endif %}
-    <table class="compact scroll">
-      <thead><tr><th>Date</th><th class="num">Close</th><th class="num">1 s.</th><th class="num">10 s.</th><th class="num">Vol ×20d</th><th>Circuit</th></tr></thead>
-      <tbody>
-      {% for h in hist %}
-      <tr><td>{{ h.date.strftime("%Y-%m-%d") if h.date.strftime else h.date }}</td><td class="num">{{ h.close | num }}</td>
-          <td class="num {{ 'up' if h.ret_1 and h.ret_1 > 0 else 'down' if h.ret_1 and h.ret_1 < 0 else '' }}">{{ h.ret_1 | pct }}</td>
-          <td class="num">{{ h.ret_10 | pct }}</td><td class="num">{{ h.vol_ratio_20 | num }}</td>
-          <td>{% if h.hit_upper %}<span class="badge up">upper</span>{% elif h.hit_lower %}<span class="badge down">lower</span>{% endif %}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div>
-    <div class="card">
-      <h2>What is unusual for this stock</h2>
-      {% if stats %}
-      <table class="compact kv">
-        <tr><td>Typical daily move (sd)</td><td class="num">{{ stats.ret1_sd | pct(2) }}</td></tr>
-        <tr><td>95th percentile daily move</td><td class="num">{{ stats.abs_ret1_p95 | pct }}</td></tr>
-        <tr><td>10-session move, 5th / 95th pct</td><td class="num">{{ stats.ret10_p05 | pct }} / {{ stats.ret10_p95 | pct }}</td></tr>
-        <tr><td>20-session move, 5th / 95th pct</td><td class="num">{{ stats.ret20_p05 | pct }} / {{ stats.ret20_p95 | pct }}</td></tr>
-        <tr><td>Volume ratio, 95th pct</td><td class="num">{{ stats.vol_ratio_p95 | num }}x</td></tr>
-        <tr><td>Upper / lower circuit hits per year</td><td class="num">{{ stats.upper_hits_per_250 | num }} / {{ stats.lower_hits_per_250 | num }}</td></tr>
-        <tr><td>Sessions in the baseline</td><td class="num">{{ stats.sessions }}</td></tr>
-      </table>
-      {% else %}<p class="muted">No baseline yet (run <code>dse analysis calibrate</code> or <code>import-stats</code>).</p>{% endif %}
-    </div>
-
-    {% if fund %}
-    <div class="card">
-      <h2>Fundamentals <span class="muted">as of {{ fund.as_of }}</span></h2>
-      <table class="compact kv">
-        <tr><td>P/E</td><td class="num">{{ fund.pe | num }}</td></tr>
-        <tr><td>EPS</td><td class="num">{{ fund.eps | num(2) }}</td></tr>
-        <tr><td>NAV per share</td><td class="num">{{ fund.nav | num(2) }}</td></tr>
-        <tr><td>Dividend yield</td><td class="num">{{ fund.dividend_yield | num(2) }}%</td></tr>
-        <tr><td>Free float</td><td class="num">{{ fund.free_float_pct | num }}%</td></tr>
-        <tr><td>52-week range</td><td class="num">{{ fund.week_low_52 | num }} – {{ fund.week_high_52 | num }}</td></tr>
-        <tr><td>Market cap (Tk)</td><td class="num">{{ fund.market_cap | num(0) }}</td></tr>
-      </table>
-    </div>
+  <div class="row">
+    {% if not item %}
+    <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>Watch</button></form>
+    <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button class="primary">Mark as target</button></form>
+    {% elif item.kind != 'target' %}
+    <form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button>Mark as target</button></form>
+    {% else %}
+    <form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>Remove target</button></form>
     {% endif %}
   </div>
-</section>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Close</div><div class="value">{{ last.close | num }}</div>
+    <div class="delta {{ 'up' if last.ret_1 and last.ret_1 > 0 else 'down' if last.ret_1 and last.ret_1 < 0 else 'flat' }}">{{ last.ret_1 | pct(2) }} today</div><div class="note">{{ last.date }}</div></div>
+  <div class="tile"><div class="label">20 / 60 / 250 sessions</div><div class="value" style="font-size:19px">
+    <span class="{{ 'up' if ev.ret_20 and ev.ret_20 > 0 else 'down' if ev.ret_20 and ev.ret_20 < 0 }}">{{ ev.ret_20 | pct }}</span> ·
+    <span class="{{ 'up' if ev.ret_60 and ev.ret_60 > 0 else 'down' if ev.ret_60 and ev.ret_60 < 0 }}">{{ ev.ret_60 | pct }}</span> ·
+    <span class="{{ 'up' if ev.ret_250 and ev.ret_250 > 0 else 'down' if ev.ret_250 and ev.ret_250 < 0 }}">{{ ev.ret_250 | pct }}</span></div>
+    <div class="note">DSEX over the same 20 sessions: {{ ev.dsex_20 | pct }}</div></div>
+  <div class="tile"><div class="label">Volume today</div><div class="value">{{ last.volume | num(0) }}</div>
+    <div class="delta flat">{{ last.vol_ratio_20 | num }}x its 20-session average</div><div class="note">95th percentile for this stock: {{ ev.vol_ratio_p95 | num }}x</div></div>
+  <div class="tile"><div class="label">52-week range</div>
+    {% if ev.range_pos is not none %}<div class="range" style="margin-top:12px"><i style="left: {{ (100 * ev.range_pos) | round(0) }}%"></i></div>
+    <div class="row between small"><span>{{ ev.low_250 | num }}</span><span class="muted">{{ (100 * ev.range_pos) | round(0) }}% of the way up</span><span>{{ ev.high_250 | num }}</span></div>{% else %}<div class="muted">needs 200+ sessions</div>{% endif %}</div>
+</div>
+
+<div class="card">
+  <div class="row between" style="margin-bottom:8px">
+    <h2 style="margin:0">Price, moving averages and volume</h2>
+    <div class="seg" data-range-for="price">
+      <button type="button" data-range="3m">3M</button><button type="button" data-range="6m">6M</button>
+      <button type="button" data-range="1y" class="active">1Y</button><button type="button" data-range="3y">3Y</button><button type="button" data-range="all">All</button>
+    </div>
+  </div>
+  <div id="price" class="chart tall" data-chart="price" data-src="price-data" data-api="/api/ohlc/{{ symbol }}"></div>
+  <script type="application/json" id="price-data">{{ price_chart | tojson }}</script>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>What is true right now</h2>
+    <div class="facts">
+      {% for f in ev.facts %}
+      <div class="fact"><div class="label">{{ f.label }}</div><div class="value {{ f.tone }}">{{ f.value }}</div><div class="note">{{ f.note }}</div></div>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="margin:12px 0 0">Each panel compares today with this stock's own history (since 2013 where available). Descriptions, not predictions.</p>
+  </div>
+  <div class="card">
+    <h2>{{ symbol }} vs DSEX, indexed to 100 one year ago</h2>
+    <div id="rel" class="chart" data-chart="lines" data-src="rel-data"></div>
+    <script type="application/json" id="rel-data">{{ rel_chart | tojson }}</script>
+  </div>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Fundamentals {% if fund %}<span class="muted">as of {{ fund.as_of }}</span>{% endif %}</h2>
+    {% if fund %}
+    <table class="compact kv">
+      <tr><td>P/E (sector median {{ ev.sector_pe | num }})</td><td>{{ fund.pe | num }}</td></tr>
+      <tr><td>EPS</td><td>{{ fund.eps | num(2) }}</td></tr>
+      <tr><td>NAV per share</td><td>{{ fund.nav | num(2) }}</td></tr>
+      <tr><td>Price / NAV</td><td>{{ (fund.price / fund.nav) | num(2) if fund.nav else "–" }}</td></tr>
+      <tr><td>Dividend yield</td><td>{{ fund.dividend_yield | num(2) }}%</td></tr>
+      <tr><td>Free float</td><td>{{ fund.free_float_pct | num }}%</td></tr>
+      <tr><td>Market cap</td><td>৳ {{ (fund.market_cap / 1e7) | num(1) }} crore</td></tr>
+      <tr><td>Paid-up capital</td><td>৳ {{ (fund.paid_up_capital / 1e7) | num(1) }} crore</td></tr>
+    </table>
+    {% else %}<p class="muted">No company page on DSE for this code (funds, bonds), or run <code>dse data instruments</code>.</p>{% endif %}
+    {% if stats %}
+    <h2 style="margin-top:16px">Its own baselines</h2>
+    <table class="compact kv">
+      <tr><td>Typical daily move (sd)</td><td>{{ stats.ret1_sd | pct(2) }}</td></tr>
+      <tr><td>95th percentile daily move</td><td>{{ stats.abs_ret1_p95 | pct }}</td></tr>
+      <tr><td>10-session move, 5th / 95th pct</td><td>{{ stats.ret10_p05 | pct }} / {{ stats.ret10_p95 | pct }}</td></tr>
+      <tr><td>20-session move, 5th / 95th pct</td><td>{{ stats.ret20_p05 | pct }} / {{ stats.ret20_p95 | pct }}</td></tr>
+      <tr><td>Upper / lower circuit hits per year</td><td>{{ stats.upper_hits_per_250 | num }} / {{ stats.lower_hits_per_250 | num }}</td></tr>
+      <tr><td>Sessions in the baseline</td><td>{{ stats.sessions }}</td></tr>
+    </table>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Price-sensitive news</h2>
+    {% if news %}{% for n in news %}<div class="news"><div class="muted small">{{ n.date }}</div><div class="title">{{ n.title }}</div><div class="detail">{{ n.body }}</div></div>{% endfor %}{% else %}<p class="muted">None on file.</p>{% endif %}
+    <h2 style="margin-top:16px">Dividends</h2>
+    {% if divs %}<table class="compact"><thead><tr><th>Declared</th><th>Dividend</th><th>Record date</th><th>AGM</th></tr></thead><tbody>
+    {% for d in divs %}<tr><td>{{ d.declared_on }}</td><td>{{ d.dividend }}</td><td>{{ d.record_date or "" }}</td><td>{{ d.agm_date or "" }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">None on file.</p>{% endif %}
+    {% if alerts %}<h2 style="margin-top:16px">Past alerts</h2><table class="compact"><tbody>{% for a in alerts %}<tr><td class="muted">{{ a.session_date }}</td><td><span class="dot {{ a.severity }}"></span> {{ a.headline }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  </div>
+</div>
 
 {% if item %}
-<section class="card">
-  <h2>Rules for {{ symbol }}</h2>
-  <p class="muted">Defaults are calibrated on this stock's own history. Untick a rule to silence it; fill a field to override. Percentages are plain numbers (5 = 5%).</p>
+<div class="card">
+  <h2>Alert rules for {{ symbol }}</h2>
+  <p class="muted small">Defaults are calibrated on this stock's own history. Untick a rule to silence it; fill a field to override. Percentages are plain numbers (5 = 5%).</p>
   <form method="post" action="/symbol/{{ symbol }}/rules" class="rules">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     {% for r in rules %}
@@ -86,20 +128,6 @@
     <label>Note <input name="note" value="{{ item.note or '' }}" placeholder="why you watch this"></label>
     <button class="primary">Save rules</button>
   </form>
-</section>
+</div>
 {% endif %}
-
-<section class="grid2">
-  <div class="card">
-    <h2>Price-sensitive news</h2>
-    {% if news %}{% for n in news %}<div class="news"><div class="muted">{{ n.date }}</div><div><strong>{{ n.title }}</strong></div><div class="detail">{{ n.body }}</div></div>{% endfor %}{% else %}<p class="muted">None on file.</p>{% endif %}
-  </div>
-  <div class="card">
-    <h2>Dividends</h2>
-    {% if divs %}<table class="compact"><thead><tr><th>Declared</th><th>Dividend</th><th>Record date</th><th>AGM</th></tr></thead><tbody>
-    {% for d in divs %}<tr><td>{{ d.declared_on }}</td><td>{{ d.dividend }}</td><td>{{ d.record_date or "" }}</td><td>{{ d.agm_date or "" }}</td></tr>{% endfor %}
-    </tbody></table>{% else %}<p class="muted">None on file.</p>{% endif %}
-    {% if alerts %}<h2>Past alerts</h2><table class="compact"><tbody>{% for a in alerts %}<tr><td class="muted">{{ a.session_date }}</td><td><span class="dot {{ a.severity }}"></span> {{ a.headline }}</td></tr>{% endfor %}</tbody></table>{% endif %}
-  </div>
-</section>
 {% endblock %}

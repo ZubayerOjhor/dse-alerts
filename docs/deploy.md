@@ -15,6 +15,10 @@ Three ways, from zero-maintenance to fully private. All of them run the same com
      bot with @BotFather, message it once, then `dse alerts telegram-id` locally shows the id).
    * Optional: `WATCHLIST_JSON` with the contents of your watchlist file, if you would rather
      not commit your email address to the repository.
+   * Optional: `HOLDINGS_CSV` with the contents of your holdings file
+     (`account,symbol,quantity,avg_cost,statement_price,statement_date,margin`), so the daily
+     email carries your portfolio value, P&L and the day's movers. Held symbols are watched
+     automatically.
 3. Copy `watchlist.example.json` to `watchlist.json`, edit it, commit (or use the secret above).
 4. **Actions → daily-alerts → Run workflow** once, with *dry run* ticked, and read the log.
    Then run it again without dry run to get the first email.

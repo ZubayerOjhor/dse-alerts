@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Log in · dse-alerts{% endblock %}
 {% block content %}
-<section class="card narrow">
+<div class="card narrow">
   <h1>Log in</h1>
+  <p class="muted small">Accounts live only in this installation's local database.</p>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form method="post" action="/login">
     <label>Email <input type="email" name="email" required autofocus></label>
     <label>Password <input type="password" name="password" required></label>
     <button class="primary">Log in</button>
   </form>
-  <p class="muted">No account yet? <a href="/register">Create one</a>.</p>
-</section>
+  <p class="muted small">No account yet? <a href="/register">Create one</a>.</p>
+</div>
 {% endblock %}

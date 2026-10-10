@@ -1,26 +1,25 @@
 {% extends "base.html" %}
+{% set active = "alerts" %}
 {% block title %}Alerts · dse-alerts{% endblock %}
 {% block content %}
-<h1>Alerts</h1>
-<section class="card">
+<div class="page-head"><div><h1>Alerts</h1><div class="sub">Everything that fired on your symbols, newest first. The same list goes out by email and Telegram.</div></div></div>
+<div class="card">
   {% if alerts %}
   <table class="compact">
-    <thead><tr><th>Session</th><th></th><th>Symbol</th><th>What happened</th><th>Rule</th><th>Emailed</th></tr></thead>
+    <thead><tr><th>Session</th><th></th><th>Symbol</th><th>What happened</th><th>Rule</th><th>Delivered</th></tr></thead>
     <tbody>
     {% for a in alerts %}
     <tr>
       <td class="muted">{{ a.session_date }}</td>
       <td><span class="dot {{ a.severity }}"></span></td>
-      <td><a href="/symbol/{{ a.symbol }}">{{ a.symbol }}</a></td>
+      <td><a href="/symbol/{{ a.symbol }}"><strong>{{ a.symbol }}</strong></a></td>
       <td>{{ a.headline }}<div class="detail">{{ a.detail }}</div></td>
-      <td class="muted">{{ a.rule_id }}</td>
+      <td class="muted"><code>{{ a.rule_id }}</code></td>
       <td class="muted">{{ "yes" if a.delivered_at else "" }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <p class="muted">No alerts recorded yet. They appear here after each daily run (or "Check now" on the watchlist).</p>
-  {% endif %}
-</section>
+  {% else %}<p class="muted">No alerts recorded yet. They appear here after each daily run, or after "Check alerts now" on the overview.</p>{% endif %}
+</div>
 {% endblock %}

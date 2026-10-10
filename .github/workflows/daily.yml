@@ -8,6 +8,8 @@
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   optional; Telegram delivery (see docs/deploy.md)
 #   WATCHLIST_JSON   optional; the contents of watchlist.json, if you would rather not commit
 #                    your email address and watchlist to the repository
+#   HOLDINGS_CSV     optional; the contents of a holdings CSV (account,symbol,quantity,avg_cost,...)
+#                    so the daily email carries your portfolio value and P&L
 #
 # Market data is cached between runs so each run only pulls the latest sessions.
 name: daily-alerts
@@ -76,13 +78,19 @@ jobs:
           dse analysis features
           dse analysis import-stats
 
-      - name: Watchlist
+      - name: Watchlist and holdings
         env:
           WATCHLIST_JSON: ${{ secrets.WATCHLIST_JSON }}
+          HOLDINGS_CSV: ${{ secrets.HOLDINGS_CSV }}
         run: |
           if [ ! -f watchlist.json ] && [ -n "$WATCHLIST_JSON" ]; then printf '%s' "$WATCHLIST_JSON" > watchlist.json; fi
           if [ ! -f watchlist.json ]; then echo "no watchlist.json and no WATCHLIST_JSON secret"; exit 1; fi
           dse alerts import watchlist.json
+          if [ -n "$HOLDINGS_CSV" ]; then
+            printf '%s' "$HOLDINGS_CSV" > data/holdings.csv
+            EMAIL=$(python -c "import json;d=json.load(open('watchlist.json'));print((d if isinstance(d,dict) else d[0])['email'])")
+            dse portfolio import data/holdings.csv --email "$EMAIL"
+          fi
 
       - name: Evaluate and deliver
         run: |

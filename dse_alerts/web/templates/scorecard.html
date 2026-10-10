@@ -1,10 +1,10 @@
 {% extends "base.html" %}
+{% set active = "scorecard" %}
 {% block title %}Scorecard · dse-alerts{% endblock %}
 {% block content %}
-<h1>Scorecard</h1>
-<p class="muted">What happened after the alerts this installation sent you: the stock's move 5 and 20 sessions later, the DSEX move over the same sessions, and the backtest's expectation for that rule. It grades the rules, not you. {{ total }} alerts, {{ pending }} still pending (fewer than 20 sessions since).</p>
+<div class="page-head"><div><h1>Scorecard</h1><div class="sub">What happened after the alerts you were sent: the stock's move 5 and 20 sessions later, DSEX over the same sessions, and the backtest's expectation. It grades the rules, not you. {{ total }} alerts, {{ pending }} pending (fewer than 20 sessions since).</div></div></div>
 
-<section class="card">
+<div class="card">
   <h2>By rule</h2>
   {% if by_rule %}
   <table>
@@ -13,16 +13,16 @@
     {% for r in by_rule %}
     <tr><td><code>{{ r.rule_id }}</code></td><td class="num">{{ r.alerts }}</td><td class="num">{{ r.scored }}</td>
         <td class="num">{{ r.fwd5_median | pct }}</td><td class="num">{{ r.fwd20_median | pct }}</td>
-        <td class="num">{% if r.fwd20_positive_share == r.fwd20_positive_share %}{{ (r.fwd20_positive_share * 100) | round(0) | int }}%{% else %}–{% endif %}</td>
+        <td class="num">{% if r.fwd20_positive_share is not none %}{{ (r.fwd20_positive_share * 100) | round(0) | int }}%{% else %}–{% endif %}</td>
         <td class="num">{{ r.excess20_median | pct }}</td><td class="num muted">{{ r.backtest_fwd20_median | pct }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   {% else %}<p class="muted">No alerts recorded yet.</p>{% endif %}
-</section>
+</div>
 
 {% if rows %}
-<section class="card">
+<div class="card">
   <h2>Every alert</h2>
   <table class="compact">
     <thead><tr><th>Session</th><th>Symbol</th><th>Alert</th><th class="num">Close</th><th class="num">+5</th><th class="num">+20</th><th class="num">DSEX +20</th><th>Status</th></tr></thead>
@@ -30,12 +30,12 @@
     {% for a in rows %}
     <tr><td class="muted">{{ a.session_date }}</td><td><a href="/symbol/{{ a.symbol }}">{{ a.symbol }}</a></td><td>{{ a.headline }}</td>
         <td class="num">{{ a.close | num }}</td>
-        <td class="num {{ 'up' if a.fwd_5 == a.fwd_5 and a.fwd_5 > 0 else 'down' if a.fwd_5 == a.fwd_5 and a.fwd_5 < 0 else '' }}">{{ a.fwd_5 | pct }}</td>
-        <td class="num {{ 'up' if a.fwd_20 == a.fwd_20 and a.fwd_20 > 0 else 'down' if a.fwd_20 == a.fwd_20 and a.fwd_20 < 0 else '' }}">{{ a.fwd_20 | pct }}</td>
-        <td class="num muted">{{ a.dsex_fwd_20 | pct }}</td><td class="muted">{{ a.status }}</td></tr>
+        <td class="num {{ 'up' if a.fwd_5 is not none and a.fwd_5 > 0 else 'down' if a.fwd_5 is not none and a.fwd_5 < 0 else '' }}">{{ a.fwd_5 | pct }}</td>
+        <td class="num {{ 'up' if a.fwd_20 is not none and a.fwd_20 > 0 else 'down' if a.fwd_20 is not none and a.fwd_20 < 0 else '' }}">{{ a.fwd_20 | pct }}</td>
+        <td class="num muted">{{ a.dsex_fwd_20 | pct }}</td><td><span class="badge {{ 'info' if a.status == 'scored' else 'warn' }}">{{ a.status }}</span></td></tr>
     {% endfor %}
     </tbody>
   </table>
-</section>
+</div>
 {% endif %}
 {% endblock %}
