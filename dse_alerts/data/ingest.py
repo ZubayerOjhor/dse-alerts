@@ -42,8 +42,13 @@ def bootstrap(store: MarketStore, raw_dir: Path) -> dict:
     return out
 
 
+def _as_date(d) -> dt.date:
+    """DuckDB and pandas hand back dates as date, datetime or Timestamp; normalise to date."""
+    return pd.Timestamp(d).date()
+
+
 def _month_chunks(start: dt.date, end: dt.date):
-    cur = start
+    cur, end = _as_date(start), _as_date(end)
     while cur <= end:
         nxt = (cur.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
         yield cur, min(end, nxt - dt.timedelta(days=1))
@@ -67,7 +72,7 @@ def refresh(store: MarketStore, end: dt.date | None = None) -> dict:
         total += n
     idx_total = 0
     ms = store.market_summary()
-    idx_start = (ms["date"].max() - dt.timedelta(days=REFRESH_OVERLAP_DAYS)) if len(ms) else LIVE_HISTORY_FLOOR
+    idx_start = (_as_date(ms["date"].max()) - dt.timedelta(days=REFRESH_OVERLAP_DAYS)) if len(ms) else LIVE_HISTORY_FLOOR
     for a, b in _month_chunks(idx_start, end):
         idx_total += store.upsert_market_summary(live.market_summary(a, b))
     news_n = store.upsert_news(live.psi_news())

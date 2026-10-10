@@ -282,8 +282,9 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     @app.get("/instruments.json")
     def instruments_json(user=Depends(require_user)):
         inst = store.instruments()
-        inst = inst[inst["tradeable"].fillna(False)]
-        return [{"symbol": r.symbol, "name": r.name or ""} for r in inst.itertuples()]
+        inst = inst[inst["tradeable"].fillna(False).astype(bool)]
+        return [{"symbol": r.symbol, "name": "" if r.name is None or pd.isna(r.name) else str(r.name)}
+                for r in inst.itertuples()]
 
     @app.exception_handler(HTTPException)
     async def _redirects(request: Request, exc: HTTPException):

@@ -21,6 +21,7 @@ def client(tmp_path):
     store.upsert_instrument_details(pd.DataFrame([
         {"symbol": "GP", "name": "Grameenphone", "category": "A", "sector": "Telecom", "instrument_type": "Equity", "listing_year": 2009, "tradeable": True},
         {"symbol": "ROBI", "name": "Robi", "category": "A", "sector": "Telecom", "instrument_type": "Equity", "listing_year": 2020, "tradeable": True},
+        {"symbol": "NONAME", "name": None, "category": None, "sector": None, "instrument_type": None, "listing_year": None, "tradeable": True},
     ]))
     from dse_alerts.analysis import features
     features.build(store)
@@ -61,7 +62,8 @@ def test_first_visit_goes_to_register_then_dashboard(client):
     assert client.get("/alerts").status_code == 200
     assert client.get("/rules").status_code == 200
     assert client.get("/settings").status_code == 200
-    assert client.get("/instruments.json").json()[0]["symbol"] == "GP"
+    codes = client.get("/instruments.json").json()
+    assert codes[0]["symbol"] == "GP" and {"symbol": "NONAME", "name": ""} in codes   # NaN name must not break JSON
 
 
 def test_login_logout_and_bad_password(client):
