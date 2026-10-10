@@ -6,8 +6,7 @@ how the DSE actually behaves (circuit-breaker slabs, A/B/Z categories, price-sen
 news, record dates) and calibrated on 25 years of daily data, so an alert means something
 instead of firing every other day.
 
-> Status: under construction. Phases 1-3 (data layer, calibration, alert engine) are done;
-> email delivery, the scheduled run, the web UI and the AI digest are in progress.
+> Status: feature-complete and running daily; screenshots and the public release are next.
 
 ## Principles
 
@@ -100,6 +99,41 @@ Step by step: [docs/deploy.md](docs/deploy.md). The per-symbol baselines from th
 calibration are committed as [`calibration/symbol_stats.csv`](calibration/symbol_stats.csv)
 so a fresh machine needs only the last two years of live data.
 
+## Phase 5: web UI (done)
+
+```bash
+dse web serve        # http://127.0.0.1:8000
+```
+
+Create an account (it lives only in your local database), add trading codes, click a
+symbol to see its last 60 sessions, its own "what is unusual" baselines, fundamentals,
+filings and dividends, and to switch each rule on or off or override its threshold.
+"Check now" evaluates the latest session on the spot. The UI makes no requests to anything
+but itself.
+
+## Phase 6: AI summary (optional)
+
+When an alert fires, a language model can turn the alert list into a short plain-English
+note: what happened, how unusual it is for that stock, what the backtest says about such
+events. It is told, in the system prompt, never to advise, never to predict, never to add
+facts. The rule-based alerts remain the source of truth and go out unchanged.
+
+Set `AI_PROVIDER` in `.env`:
+
+* `anthropic` with `ANTHROPIC_API_KEY` (model defaults to `claude-fable-5-1`; server-side
+  refusal fallbacks are enabled as that model recommends), or
+* `openai_compatible` with `OPENAI_COMPAT_BASE_URL`, `OPENAI_COMPAT_API_KEY` and
+  `OPENAI_COMPAT_MODEL`: Groq's free tier, OpenRouter's `:free` models, or a local Ollama.
+
+Leave it blank and nothing is sent anywhere.
+
+## Docker
+
+```bash
+cp .env.example .env    # fill in what you use
+docker compose up -d    # web on :8000 + a scheduler that runs the daily chain at 16:30 BDT
+```
+
 ## Plan
 
 | Phase | What | Status |
@@ -108,8 +142,9 @@ so a fresh machine needs only the last two years of live data.
 | 2 | Calibration study: what "unusual" means per stock, measured on clean history | done |
 | 3 | Alert rules + engine + backtest of each rule | done |
 | 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | done |
-| 5 | Web UI: login, watchlists, alert settings, history | next |
-| 6 | AI digest (optional), Docker, docs, public release | |
+| 5 | Web UI: login, watchlists, alert settings, history | done |
+| 6 | AI digest (optional), Docker | done |
+| 7 | Screenshots, first real email, public release | next |
 
 ## Licence
 

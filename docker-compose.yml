@@ -1,0 +1,38 @@
+# docker compose up -d
+#   web        the UI on http://localhost:8000
+#   scheduler  pulls data, rebuilds features and runs alerts at 16:30 Bangladesh time, Sun-Thu
+# Both share the /data volume. Put SMTP_* and AI_* settings in .env next to this file.
+services:
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DSE_DATA_DIR: /data
+      APP_HOST: 0.0.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - dse-data:/data
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    env_file: .env
+    environment:
+      DSE_DATA_DIR: /data
+      TZ: Asia/Dhaka
+    volumes:
+      - dse-data:/data
+    restart: unless-stopped
+    # first start: load the fallback archive and baselines; then loop on the daily schedule
+    command: >
+      sh -c "dse data bootstrap && dse data refresh && dse data instruments && dse analysis features && dse analysis import-stats;
+             while true; do
+               if [ \"$$(date +%u)\" -le 4 ] || [ \"$$(date +%u)\" -eq 7 ]; then
+                 if [ \"$$(date +%H%M)\" = \"1630\" ]; then dse data refresh && dse analysis features && dse alerts run; sleep 60; fi;
+               fi;
+               sleep 30;
+             done"
+
+volumes:
+  dse-data:

@@ -247,16 +247,24 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
     if session is None:
         rprint("[red]no feature data; run `dse data refresh` and `dse analysis features` first[/red]")
         raise typer.Exit(1)
+    from dse_alerts.ai import digest as ai
+
     sent = 0
+    evidence = ai.load_rule_evidence(s) if s.ai_enabled else {}
     for r in results:
-        deliver.to_console(session, r.email, r.new_alerts, r.symbols)
+        u = db.user_by_id(r.user_id)
+        summary = None
+        if r.new_alerts and s.ai_enabled and u and u["digest_enabled"]:
+            summary = ai.write_digest(s, session, r.new_alerts, r.symbols, evidence)
+            rprint("[green]AI summary written[/green]" if summary else "[yellow]AI summary unavailable; sending alerts without it[/yellow]")
+        deliver.to_console(session, r.email, r.new_alerts, r.symbols, summary)
         if r.missing_symbols:
             rprint(f"[yellow]no data for:[/yellow] {', '.join(r.missing_symbols)}")
         if dry_run:
             continue
-        p = deliver.to_outbox(s.outbox_dir, session, r.email, r.new_alerts, r.symbols)
+        p = deliver.to_outbox(s.outbox_dir, session, r.email, r.new_alerts, r.symbols, summary)
         rprint(f"outbox: {p}")
-        if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, session, r.new_alerts, r.symbols):
+        if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, session, r.new_alerts, r.symbols, summary):
             db.mark_delivered(r.user_id, r.new_alerts)
             sent += 1
             rprint(f"emailed {r.alert_email}")
