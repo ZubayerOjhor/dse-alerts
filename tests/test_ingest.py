@@ -1,4 +1,5 @@
 import datetime as dt
+from itertools import pairwise
 
 import pandas as pd
 
@@ -10,7 +11,7 @@ def test_month_chunks_cover_the_range_without_gaps():
     assert chunks[0] == (dt.date(2025, 11, 20), dt.date(2025, 11, 30))
     assert chunks[-1] == (dt.date(2026, 2, 1), dt.date(2026, 2, 3))
     assert len(chunks) == 4
-    for (_, b), (a2, _) in zip(chunks, chunks[1:]):
+    for (_, b), (a2, _) in pairwise(chunks):
         assert a2 == b + dt.timedelta(days=1)
 
 
