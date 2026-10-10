@@ -75,8 +75,9 @@ WITH base AS (
            avg(close)   OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS sma_50,
            count(*)     OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS n_prev_50,
            sum(CASE WHEN volume = 0 THEN 1 ELSE 0 END) OVER (w ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS zero_vol_10,
-           max(high)    OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS high_250,
-           min(low)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS low_250,
+           -- sessions with no trades carry open/high/low = 0; use the close for them
+           max(CASE WHEN high > 0 THEN high ELSE close END) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS high_250,
+           min(CASE WHEN low  > 0 THEN low  ELSE close END) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS low_250,
            count(*)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS n_prev_250,
            date - lag(date) OVER w AS gap_days
     FROM prices p

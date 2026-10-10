@@ -102,7 +102,7 @@ consistency test exposed. The audit is in [docs/data-quality.md](docs/data-quali
 | `big_drop` / `big_rise` | beyond the stock's own 5th / 95th percentile 10-session move, once per episode | 4.1 / 3.4 | -0.3% / -2.1% |
 | `upper_circuit` / `lower_circuit` | closed at the daily limit (streak configurable) | 2.4 / 0.7 | -0.7% / -2.6% |
 | `volume_spike` | >= 3x (or the stock's 95th pct) with a 3%+ move | 7.0 | -1.6% |
-| `new_250d_high` / `new_250d_low` | close beyond the previous 250 sessions' range | 2.4 / 2.3 | 0.0% / +1.7% |
+| `new_250d_high` / `new_250d_low` | close beyond the previous 250 sessions' range | 2.1 / 3.7 | -1.0% / +1.0% |
 | `psi_news`, `record_date` | filings and record dates from the exchange feed | | |
 | `vs_index`, `ma_cross`, `pe_level` | opt-in: diverged 5 pts from DSEX, crossed the 50-session average, P/E level | | |
 | `illiquid` | no trades in 5 of the last 10 sessions, when it begins | 0.8 | |

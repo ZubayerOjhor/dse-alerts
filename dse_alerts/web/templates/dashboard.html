@@ -59,7 +59,7 @@
     <tbody>
     {% for r in rows %}
     <tr>
-      <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a><div class="muted small">{{ r.name or "" }}</div></td>
+      <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a><div class="muted small name" title="{{ r.name or '' }}">{{ r.name or "" }}</div></td>
       <td><span class="badge {{ r.kind }}">{{ r.kind }}</span></td>
       <td>{% if r.category %}<span class="badge cat-{{ r.category }}">{{ r.category }}</span>{% endif %}</td>
       <td class="num">{{ r.close | num }}</td>

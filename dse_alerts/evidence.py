@@ -176,7 +176,7 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
             "pe": _f(fund_m.loc[r.symbol, "pe"]) if fund_m is not None and r.symbol in fund_m.index else None,
             "dividend_yield": _f(fund_m.loc[r.symbol, "dividend_yield"]) if fund_m is not None and r.symbol in fund_m.index else None,
             "sector_pe": sector_cache[r.sector],
-            "last_news_date": str(news_m.loc[r.symbol, "date"]) if news_m is not None and r.symbol in news_m.index else None,
+            "last_news_date": _date(news_m.loc[r.symbol, "date"]) if news_m is not None and r.symbol in news_m.index else None,
             "last_news_title": str(news_m.loc[r.symbol, "title"]) if news_m is not None and r.symbol in news_m.index else None,
             "closes": list(r.closes) if r.closes is not None else [],
         })

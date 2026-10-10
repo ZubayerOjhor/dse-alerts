@@ -94,6 +94,7 @@ tbody tr:hover { background: var(--surface-2); }
 table.compact th, table.compact td { padding: 6px 8px; font-size: 13px; }
 table.kv td:first-child { color: var(--muted); width: 55%; } table.kv td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .scroll { max-height: 440px; overflow: auto; }
+.name { max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rowgroup td { background: var(--surface-2); font-weight: 650; }
 
 /* badges, dots, bars */

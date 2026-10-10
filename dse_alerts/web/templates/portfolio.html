@@ -53,7 +53,7 @@
     <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>
     {% for p in acc.rows %}
     <tr>
-      <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a><div class="muted small">{{ p.name or "" }}</div></td>
+      <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a><div class="muted small name" title="{{ p.name or '' }}">{{ p.name or "" }}</div></td>
       <td>{% if p.category %}<span class="badge cat-{{ p.category }}">{{ p.category }}</span>{% endif %}</td>
       <td class="muted small">{{ p.sector or "" }}</td>
       <td class="num">{{ p.quantity | num(0) }}</td><td class="num">{{ p.avg_cost | num(2) }}</td><td class="num">{{ p.close | num }}</td>
