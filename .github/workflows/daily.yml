@@ -5,6 +5,7 @@
 #   SMTP_USER        your Gmail address
 #   SMTP_PASSWORD    a Gmail "App password" (not your login password)
 #   ALERT_FROM       optional; defaults to SMTP_USER
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   optional; Telegram delivery (see docs/deploy.md)
 #   WATCHLIST_JSON   optional; the contents of watchlist.json, if you would rather not commit
 #                    your email address and watchlist to the repository
 #
@@ -37,6 +38,8 @@ jobs:
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       ALERT_FROM: ${{ secrets.ALERT_FROM }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
 

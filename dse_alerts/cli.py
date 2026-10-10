@@ -306,6 +306,36 @@ def test_email(email: str = typer.Option(..., help="User whose watchlist and add
         raise typer.Exit(1)
 
 
+@alerts_app.command(name="test-telegram")
+def test_telegram(email: str = typer.Option(..., help="User whose watchlist to use"),
+                  chat_id: str = typer.Option(None, help="Override the chat id from .env / user settings")):
+    """Send this user whatever fired on the latest session to Telegram, to verify the bot."""
+    from dse_alerts import engine
+    from dse_alerts.notify import deliver
+
+    s = get_settings()
+    if not s.telegram_enabled:
+        rprint("[red]TELEGRAM_BOT_TOKEN is not set in .env[/red]")
+        raise typer.Exit(1)
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}")
+    chat = chat_id or dict(u).get("telegram_chat_id") or s.telegram_chat_id
+    if not chat:
+        rprint("[red]no chat id: set TELEGRAM_CHAT_ID in .env or pass --chat-id (see `dse alerts telegram-id`)[/red]")
+        raise typer.Exit(1)
+    session, results = engine.run(_store(), db, record=False, user_ids=[u["id"]])
+    if session is None or not results:
+        rprint("[red]no data to evaluate[/red]")
+        raise typer.Exit(1)
+    r = results[0]
+    ok = deliver.send_telegram(s, chat, deliver.telegram_text(session, r.alerts))
+    rprint(f"{'sent' if ok else '[red]failed[/red]'}: {len(r.alerts)} alert(s) for session {session} -> chat {chat}")
+    if not ok:
+        raise typer.Exit(1)
+
+
 @alerts_app.command(name="telegram-id")
 def telegram_id():
     """Show the chat ids of people who have messaged the bot (set TELEGRAM_BOT_TOKEN first)."""

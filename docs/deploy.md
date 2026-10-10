@@ -11,7 +11,11 @@ Three ways, from zero-maintenance to fully private. All of them run the same com
    * `SMTP_PASSWORD`: a Gmail **App password** (Google Account → Security → 2-Step
      Verification → App passwords). Your normal password will not work and should never
      be put anywhere.
-3. Copy `watchlist.example.json` to `watchlist.json`, edit it, commit.
+   * Optional: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for Telegram delivery (create a
+     bot with @BotFather, message it once, then `dse alerts telegram-id` locally shows the id).
+   * Optional: `WATCHLIST_JSON` with the contents of your watchlist file, if you would rather
+     not commit your email address to the repository.
+3. Copy `watchlist.example.json` to `watchlist.json`, edit it, commit (or use the secret above).
 4. **Actions → daily-alerts → Run workflow** once, with *dry run* ticked, and read the log.
    Then run it again without dry run to get the first email.
 
