@@ -119,6 +119,41 @@ def run(store: MarketStore, since: dt.date = DEFAULT_SINCE) -> dict:
     }
 
 
+def run_events(store: MarketStore, predicates: dict[str, str], since: dt.date = DEFAULT_SINCE) -> pd.DataFrame:
+    """Event study for arbitrary predicates over features joined with symbol_stats (so rule
+    predicates can refer to per-symbol percentiles). Requires ``run`` to have been executed
+    once, which creates ``symbol_stats``."""
+    with store.connect() as con:
+        con.execute(
+            f"""
+            CREATE OR REPLACE TEMP TABLE u AS
+            SELECT f.*, s.ret1_sd, s.abs_ret1_p95, s.ret10_p05, s.ret10_p95, s.ret20_p05, s.ret20_p95, s.vol_ratio_p95
+            FROM ({_UNIVERSE}) f LEFT JOIN symbol_stats s USING (symbol)
+            """,
+            [since],
+        )
+        base = con.execute(
+            "SELECT quantile_cont(fwd_20, 0.5), avg(fwd_20), avg(CASE WHEN fwd_20 > 0 THEN 1.0 ELSE 0.0 END) FROM u WHERE fwd_20 IS NOT NULL"
+        ).fetchone()
+        total = con.execute("SELECT count(*) FROM u").fetchone()[0]
+        rows = []
+        for name, pred in predicates.items():
+            r = con.execute(
+                f"""
+                SELECT count(*), count(DISTINCT symbol),
+                       quantile_cont(fwd_5, 0.5), avg(fwd_5), quantile_cont(fwd_20, 0.5), avg(fwd_20),
+                       avg(CASE WHEN fwd_20 > 0 THEN 1.0 ELSE 0.0 END)
+                FROM u WHERE ({pred}) AND fwd_20 IS NOT NULL
+                """
+            ).fetchone()
+            rows.append({"event": name, "predicate": pred, "n": r[0], "symbols": r[1],
+                         "per_250_sessions": 250.0 * r[0] / total if total else 0.0,
+                         "fwd5_median": r[2], "fwd5_mean": r[3], "fwd20_median": r[4], "fwd20_mean": r[5],
+                         "fwd20_positive_share": r[6],
+                         "base_fwd20_median": base[0], "base_fwd20_mean": base[1], "base_fwd20_positive_share": base[2]})
+    return pd.DataFrame(rows)
+
+
 def _pct(x: float | None, digits: int = 1) -> str:
     return "-" if x is None or pd.isna(x) else f"{100 * x:+.{digits}f}%"
 

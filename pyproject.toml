@@ -36,5 +36,8 @@ include = ["dse_alerts*"]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint.per-file-ignores]
+"dse_alerts/cli.py" = ["B008"]   # typer.Option/Argument in defaults is the typer idiom
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

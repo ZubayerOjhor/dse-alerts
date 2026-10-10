@@ -7,12 +7,16 @@ off (see docs/data-quality.md). The result is materialised as table ``features``
 Columns (one row per symbol, session):
 
 * ``ret_1 / ret_5 / ret_10 / ret_20``   close vs the close 1/5/10/20 sessions earlier
+* ``ret_5_prev / ret_10_prev / ret_20_prev``  the same, as of the previous session
 * ``fwd_5 / fwd_20``                     close 5/20 sessions later vs today (for backtests only)
 * ``vol_ratio_20``                       volume / mean volume of the previous 20 sessions
 * ``slab_limit``                         daily price-move limit implied by the previous close
 * ``hit_upper / hit_lower``              closed at (or within a tick of) the upper / lower limit
 * ``upper_streak / lower_streak``        consecutive sessions at that limit, including today
 * ``high_250 / low_250``                 highest high / lowest low of the previous 250 sessions
+* ``sma_20 / sma_50``                    simple moving averages of the close (incl. today)
+* ``sma50_cross``                        +1 when the close crossed above the 50-session average today, -1 below, else 0
+* ``zero_vol_10``                        sessions with no trades among the last 10
 * ``dsex_ret_1``                         DSEX move on the same date, where an index series exists
 * ``regime``                             'normal' | 'bubble_2010' | 'covid_closure' | 'floor_price'
 * ``gap_days``                           calendar days since the previous session
@@ -61,9 +65,16 @@ WITH base AS (
            lag(close, 5)   OVER w AS close_5,
            lag(close, 10)  OVER w AS close_10,
            lag(close, 20)  OVER w AS close_20,
+           lag(close, 6)   OVER w AS close_6,
+           lag(close, 11)  OVER w AS close_11,
+           lag(close, 21)  OVER w AS close_21,
            lead(close, 5)  OVER w AS close_f5,
            lead(close, 20) OVER w AS close_f20,
            avg(volume)  OVER (w ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) AS avg_vol_20,
+           avg(close)   OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS sma_20,
+           avg(close)   OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS sma_50,
+           count(*)     OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS n_prev_50,
+           sum(CASE WHEN volume = 0 THEN 1 ELSE 0 END) OVER (w ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS zero_vol_10,
            max(high)    OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS high_250,
            min(low)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS low_250,
            count(*)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS n_prev_250,
@@ -75,7 +86,9 @@ WITH base AS (
 lim AS (
     SELECT *,
            {_SLAB_SQL} AS slab_limit,
-           close / prev_close - 1 AS ret_1
+           close / prev_close - 1 AS ret_1,
+           sign(close - sma_50) AS above_50,
+           lag(sign(close - sma_50)) OVER (PARTITION BY symbol ORDER BY date) AS above_50_prev
     FROM base
 ),
 hits AS (
@@ -96,6 +109,9 @@ SELECT g.symbol, g.date, g.open, g.high, g.low, g.close, g.volume, g.source, g.d
        g.close / g.close_5  - 1 AS ret_5,
        g.close / g.close_10 - 1 AS ret_10,
        g.close / g.close_20 - 1 AS ret_20,
+       g.prev_close / g.close_6  - 1 AS ret_5_prev,    -- the same windows one session earlier,
+       g.prev_close / g.close_11 - 1 AS ret_10_prev,   -- so rules can fire when a threshold is
+       g.prev_close / g.close_21 - 1 AS ret_20_prev,   -- first crossed instead of every session
        g.close_f5  / g.close - 1 AS fwd_5,
        g.close_f20 / g.close - 1 AS fwd_20,
        CASE WHEN g.avg_vol_20 > 0 THEN g.volume / g.avg_vol_20 END AS vol_ratio_20,
@@ -110,6 +126,12 @@ SELECT g.symbol, g.date, g.open, g.high, g.low, g.close, g.volume, g.source, g.d
             ELSE 0 END AS lower_streak,
        CASE WHEN g.n_prev_250 >= 200 THEN g.high_250 END AS high_250,
        CASE WHEN g.n_prev_250 >= 200 THEN g.low_250  END AS low_250,
+       CASE WHEN g.n_prev_50 >= 20 THEN g.sma_20 END AS sma_20,
+       CASE WHEN g.n_prev_50 >= 50 THEN g.sma_50 END AS sma_50,
+       CASE WHEN g.n_prev_50 < 50 OR g.above_50 IS NULL OR g.above_50_prev IS NULL THEN 0
+            WHEN g.above_50 > g.above_50_prev THEN 1
+            WHEN g.above_50 < g.above_50_prev THEN -1 ELSE 0 END AS sma50_cross,
+       g.zero_vol_10,
        i.dsex / lag(i.dsex) OVER (ORDER BY i.date) - 1 AS dsex_ret_1,
        {_REGIME_SQL} AS regime,
        g.gap_days
