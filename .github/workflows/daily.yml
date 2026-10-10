@@ -1,0 +1,104 @@
+# Daily alert run on GitHub's free runners. Fork the repo, add your secrets, and this sends
+# you an email after each session. See docs/deploy.md.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   SMTP_USER        your Gmail address
+#   SMTP_PASSWORD    a Gmail "App password" (not your login password)
+#   ALERT_FROM       optional; defaults to SMTP_USER
+#   WATCHLIST_JSON   optional; the contents of watchlist.json, if you would rather not commit
+#                    your email address and watchlist to the repository
+#
+# Market data is cached between runs so each run only pulls the latest sessions.
+name: daily-alerts
+
+on:
+  schedule:
+    - cron: "30 10 * * 0-4"   # 16:30 Bangladesh time, Sunday-Thursday (DSE closes 14:30)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Evaluate and print only; send nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-alerts
+  cancel-in-progress: false
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DSE_DATA_DIR: ./data
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_FROM: ${{ secrets.ALERT_FROM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - run: pip install -e .
+
+      - name: Restore market data from the last run
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/market.duckdb
+            data/app.sqlite
+          key: dse-data-${{ github.run_id }}
+          restore-keys: dse-data-
+
+      - name: Pull the latest sessions, news and dividends
+        run: dse data refresh
+
+      - name: Company profiles and fundamentals (fresh cache, manual run, or Sundays)
+        continue-on-error: true
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' || steps.cache.outputs.cache-matched-key == '' }}
+        run: |
+          if [ "$FORCE" = "true" ] || [ "$(date -u +%u)" = "7" ]; then dse data instruments; else echo "skipped"; fi
+
+      - name: Features and per-symbol baselines
+        run: |
+          dse analysis features
+          dse analysis import-stats
+
+      - name: Watchlist
+        env:
+          WATCHLIST_JSON: ${{ secrets.WATCHLIST_JSON }}
+        run: |
+          if [ ! -f watchlist.json ] && [ -n "$WATCHLIST_JSON" ]; then printf '%s' "$WATCHLIST_JSON" > watchlist.json; fi
+          if [ ! -f watchlist.json ]; then echo "no watchlist.json and no WATCHLIST_JSON secret"; exit 1; fi
+          dse alerts import watchlist.json
+
+      - name: Evaluate and deliver
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then dse alerts run --dry-run; else dse alerts run; fi
+
+      - name: Keep the outbox as a run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outbox-${{ github.run_id }}
+          path: data/outbox/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save market data for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/market.duckdb
+            data/app.sqlite
+          key: dse-data-${{ github.run_id }}

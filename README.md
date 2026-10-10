@@ -91,6 +91,15 @@ The per-stock percentiles come from `symbol_stats` (phase 2), so "big" means big
 stock*. A user who prefers an absolute number sets `pct` and that wins. Backtest figures are
 from 2013-2026 with the floor-price period excluded; regenerate them with `dse alerts backtest`.
 
+## Phase 4: delivery and the daily run (done)
+
+Email goes out over SMTP when `SMTP_USER` / `SMTP_PASSWORD` are set (a Gmail app password
+works); otherwise alerts land in `data/outbox/`. The daily run can live on GitHub Actions
+(fork, add two secrets, done), on your own machine via Task Scheduler or cron, or in Docker.
+Step by step: [docs/deploy.md](docs/deploy.md). The per-symbol baselines from the 14-year
+calibration are committed as [`calibration/symbol_stats.csv`](calibration/symbol_stats.csv)
+so a fresh machine needs only the last two years of live data.
+
 ## Plan
 
 | Phase | What | Status |
@@ -98,8 +107,8 @@ from 2013-2026 with the floor-price period excluded; regenerate them with `dse a
 | 1 | Data layer: archive + live ingestion, validation, instrument profiles | done |
 | 2 | Calibration study: what "unusual" means per stock, measured on clean history | done |
 | 3 | Alert rules + engine + backtest of each rule | done |
-| 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | next |
-| 5 | Web UI: login, watchlists, alert settings, history | |
+| 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | done |
+| 5 | Web UI: login, watchlists, alert settings, history | next |
 | 6 | AI digest (optional), Docker, docs, public release | |
 
 ## Licence

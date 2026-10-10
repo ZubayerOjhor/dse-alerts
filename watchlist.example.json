@@ -1,0 +1,11 @@
+{
+  "email": "you@example.com",
+  "alert_to": "you@example.com",
+  "symbols": {
+    "GP": {"big_drop": {"days": 10, "pct": 0.05}, "pe_level": {"max": 12}},
+    "SQURPHARMA": {},
+    "BRACBANK": {},
+    "ROBI": {"ma_cross": {"direction": "below"}},
+    "BEXIMCO": {"upper_circuit": {"streak": 2}, "volume_spike": false}
+  }
+}

@@ -154,6 +154,33 @@ def run_events(store: MarketStore, predicates: dict[str, str], since: dt.date = 
     return pd.DataFrame(rows)
 
 
+STATS_COLUMNS = ["symbol", "category", "sector", "sessions", "first_date", "last_date", "ret1_sd", "abs_ret1_p95",
+                 "ret10_p05", "ret10_p95", "ret20_p05", "ret20_p95", "vol_ratio_p95", "median_volume",
+                 "upper_hits_per_250", "lower_hits_per_250", "zero_volume_share", "computed_at"]
+
+
+def export_stats(store: MarketStore, path: Path) -> int:
+    """Write symbol_stats to CSV so a machine without the long history (e.g. CI) can use it."""
+    with store.connect(read_only=True) as con:
+        df = con.execute("SELECT * FROM symbol_stats ORDER BY symbol").df()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df[STATS_COLUMNS].to_csv(path, index=False)
+    return len(df)
+
+
+def import_stats(store: MarketStore, path: Path, force: bool = False) -> int:
+    """Load symbol_stats from CSV unless the table already has rows (or force=True)."""
+    df = pd.read_csv(path, parse_dates=["first_date", "last_date", "computed_at"])
+    with store.connect() as con:
+        exists = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'symbol_stats'").fetchone()[0]
+        if exists and not force and con.execute("SELECT count(*) FROM symbol_stats").fetchone()[0]:
+            return 0
+        con.register("incoming", df)
+        con.execute("CREATE OR REPLACE TABLE symbol_stats AS SELECT * FROM incoming")
+        con.unregister("incoming")
+    return len(df)
+
+
 def _pct(x: float | None, digits: int = 1) -> str:
     return "-" if x is None or pd.isna(x) else f"{100 * x:+.{digits}f}%"
 

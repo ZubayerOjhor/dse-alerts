@@ -103,10 +103,48 @@ def calibrate(since: str = typer.Option("2013-01-01", help="Start of the calibra
     rprint(res["event_stats"][["event", "per_250_sessions", "n", "fwd20_median", "fwd20_positive_share"]].to_string(index=False))
 
 
+@analysis_app.command(name="export-stats")
+def export_stats(path: str = typer.Option("calibration/symbol_stats.csv")):
+    """Write per-symbol baselines to CSV (committed, so CI needs no long history)."""
+    from dse_alerts.analysis import calibrate as cal
+
+    rprint(f"{cal.export_stats(_store(), Path(path))} symbols -> {path}")
+
+
+@analysis_app.command(name="import-stats")
+def import_stats(path: str = typer.Option("calibration/symbol_stats.csv"), force: bool = typer.Option(False)):
+    """Load per-symbol baselines from CSV when the store has none (or --force)."""
+    from dse_alerts.analysis import calibrate as cal
+
+    n = cal.import_stats(_store(), Path(path), force)
+    rprint(f"{n} symbols loaded" if n else "symbol_stats already present; use --force to replace")
+
+
 def _appdb():
     from dse_alerts.appdb import AppDB
 
     return AppDB(get_settings().app_db)
+
+
+@alerts_app.command(name="import")
+def import_watchlist(path: str = typer.Argument("watchlist.json")):
+    """Create or update users and watchlists from a JSON file (see watchlist.example.json)."""
+    import json
+
+    db = _appdb()
+    spec = json.loads(Path(path).read_text(encoding="utf-8"))
+    users = spec if isinstance(spec, list) else [spec]
+    for u in users:
+        uid = db.ensure_user(u["email"], alert_email=u.get("alert_to"))
+        if u.get("alert_to"):
+            db.update_user(uid, alert_email=u["alert_to"])
+        wl = db.ensure_watchlist(uid, u.get("watchlist", "My watchlist"))
+        symbols = u.get("symbols", {})
+        if isinstance(symbols, list):
+            symbols = {s: {} for s in symbols}
+        for sym, cfg in symbols.items():
+            db.add_item(wl, sym, cfg or {})
+        rprint(f"{u['email']}: {len(db.items(uid))} symbols")
 
 
 @alerts_app.command()
