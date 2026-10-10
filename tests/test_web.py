@@ -60,6 +60,10 @@ def test_first_visit_goes_to_register_then_dashboard(client):
 
     assert client.post("/alerts/check", data={"csrf": csrf}).status_code == 303
     assert client.get("/alerts").status_code == 200
+    r = client.get("/scorecard")
+    assert r.status_code == 200 and "Scorecard" in r.text
+    r = client.post("/settings", data={"csrf": csrf, "alert_to": "", "telegram_chat_id": "42"})
+    assert r.status_code == 303 and 'value="42"' in client.get("/settings").text
     assert client.get("/rules").status_code == 200
     assert client.get("/settings").status_code == 200
     codes = client.get("/instruments.json").json()

@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS alerts_user_date ON alerts(user_id, session_date);
 """
 
+# columns added after the first release; applied when missing
+MIGRATIONS = [
+    ("users", "telegram_chat_id", "ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
+]
+
 
 def _now() -> str:
     return dt.datetime.now().isoformat(timespec="seconds")
@@ -79,6 +84,10 @@ class AppDB:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as con:
             con.executescript(SCHEMA)
+            for table, column, ddl in MIGRATIONS:
+                cols = {r["name"] for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
+                if column not in cols:
+                    con.execute(ddl)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -119,7 +128,7 @@ class AppDB:
             return con.execute("SELECT * FROM users ORDER BY id").fetchall()
 
     def update_user(self, user_id: int, **fields: Any) -> None:
-        allowed = {"alert_email", "digest_enabled", "password_hash"}
+        allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return

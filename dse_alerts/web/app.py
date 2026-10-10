@@ -249,6 +249,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         engine.run(store, appdb, record=True, user_ids=[user["id"]])
         return RedirectResponse("/", status_code=303)
 
+    @app.get("/scorecard", response_class=HTMLResponse)
+    def scorecard_page(request: Request, user=Depends(require_user)):
+        from dse_alerts import scorecard as sc
+
+        request.state.user = user
+        df = sc.outcomes(store, appdb, user["id"])
+        agg = sc.by_rule(df, sc.load_expectation(settings))
+        return render(request, "scorecard.html", rows=df.head(200).to_dict("records"), by_rule=agg.to_dict("records"),
+                      pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df))
+
     @app.get("/rules", response_class=HTMLResponse)
     def rules_page(request: Request, user=Depends(require_user)):
         request.state.user = user
@@ -268,9 +278,10 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.post("/settings")
     def save_settings(request: Request, csrf: str = Form(...), alert_to: str = Form(""), digest: str = Form(""),
-                      password: str = Form(""), user=Depends(require_user)):
+                      password: str = Form(""), telegram_chat_id: str = Form(""), user=Depends(require_user)):
         check_csrf(request, csrf)
-        fields = {"alert_email": alert_to.strip() or user["email"], "digest_enabled": 1 if digest == "on" else 0}
+        fields = {"alert_email": alert_to.strip() or user["email"], "digest_enabled": 1 if digest == "on" else 0,
+                  "telegram_chat_id": telegram_chat_id.strip() or None}
         if password:
             if len(password) < 8:
                 request.state.user = user

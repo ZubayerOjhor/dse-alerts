@@ -111,6 +111,21 @@ filings and dividends, and to switch each rule on or off or override its thresho
 "Check now" evaluates the latest session on the spot. The UI makes no requests to anything
 but itself.
 
+### Scorecard: it grades its own alerts
+
+`/scorecard` in the UI (or `dse alerts scorecard --email you@example.com`) shows, for every
+alert you were actually sent, what the stock did 5 and 20 sessions later, what DSEX did
+over the same sessions, and the backtest's expectation for that rule. Alerts younger than
+20 sessions are marked pending. It grades the rules, not you, and an outcome is never
+turned into a recommendation.
+
+### Telegram (optional)
+
+Create a bot with @BotFather, put its token in `.env` as `TELEGRAM_BOT_TOKEN`, send the bot
+a message, run `dse alerts telegram-id` to find your chat id, and set it as
+`TELEGRAM_CHAT_ID` (or per user under Settings). Alerts then arrive in Telegram as well as,
+or instead of, email.
+
 ## Phase 6: AI summary (optional)
 
 When an alert fires, a language model can turn the alert list into a short plain-English
@@ -143,7 +158,7 @@ docker compose up -d    # web on :8000 + a scheduler that runs the daily chain a
 | 3 | Alert rules + engine + backtest of each rule | done |
 | 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | done |
 | 5 | Web UI: login, watchlists, alert settings, history | done |
-| 6 | AI digest (optional), Docker | done |
+| 6 | AI digest (optional), Docker, scorecard, Telegram | done |
 | 7 | Screenshots, first real email, public release | next |
 
 ## Licence

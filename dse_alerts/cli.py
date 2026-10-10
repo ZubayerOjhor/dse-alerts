@@ -264,14 +264,69 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
             continue
         p = deliver.to_outbox(s.outbox_dir, session, r.email, r.new_alerts, r.symbols, summary)
         rprint(f"outbox: {p}")
+        delivered = False
         if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, session, r.new_alerts, r.symbols, summary):
+            delivered = True
+            rprint(f"emailed {r.alert_email}")
+        chat = (dict(u).get("telegram_chat_id") if u else None) or s.telegram_chat_id
+        if r.new_alerts and s.telegram_enabled and chat and deliver.send_telegram(s, chat, deliver.telegram_text(session, r.new_alerts, summary)):
+            delivered = True
+            rprint(f"telegram -> chat {chat}")
+        if delivered:
             db.mark_delivered(r.user_id, r.new_alerts)
             sent += 1
-            rprint(f"emailed {r.alert_email}")
     if run_id:
         db.finish_run(run_id, session_date=session.isoformat(), users=len(results),
                       symbols=sum(len(r.symbols) for r in results), alerts_new=sum(len(r.new_alerts) for r in results),
                       alerts_sent=sent, status="ok")
+
+
+@alerts_app.command(name="telegram-id")
+def telegram_id():
+    """Show the chat ids of people who have messaged the bot (set TELEGRAM_BOT_TOKEN first)."""
+    from dse_alerts.notify import deliver
+
+    s = get_settings()
+    if not s.telegram_enabled:
+        rprint("[red]TELEGRAM_BOT_TOKEN is not set in .env[/red]")
+        raise typer.Exit(1)
+    ups = deliver.telegram_updates(s)
+    if not ups:
+        rprint("No messages yet. Open your bot in Telegram, send it any message, then run this again.")
+        return
+    t = Table("chat id", "who", "last message")
+    for u in ups:
+        t.add_row(u["chat_id"], u["name"], u["text"])
+    rprint(t)
+    rprint("Put the chat id in .env as TELEGRAM_CHAT_ID, or per user under Settings in the web UI.")
+
+
+@alerts_app.command()
+def scorecard(email: str = typer.Option(...)):
+    """What happened 5 and 20 sessions after the alerts sent to this user, per rule."""
+    from dse_alerts import scorecard as sc
+
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}")
+    df = sc.outcomes(_store(), db, u["id"])
+    agg = sc.by_rule(df, sc.load_expectation(get_settings()))
+    if agg.empty:
+        rprint("No alerts recorded yet.")
+        return
+    import math
+
+    def f(v, digits=1, sign="+"):
+        return "–" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{100 * v:{sign}.{digits}f}%"
+
+    t = Table("rule", "alerts", "scored", "fwd 5 median", "fwd 20 median", "positive", "vs DSEX (20)", "backtest fwd 20")
+    for r in agg.itertuples():
+        t.add_row(r.rule_id, str(r.alerts), str(r.scored), f(r.fwd5_median), f(r.fwd20_median),
+                  f(r.fwd20_positive_share, 0, ""), f(r.excess20_median), f(r.backtest_fwd20_median))
+    rprint(t)
+    pend = int((df["status"] == "pending").sum())
+    rprint(f"{len(df)} alerts, {pend} still pending (fewer than 20 sessions since).")
 
 
 @alerts_app.command()

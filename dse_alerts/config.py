@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     alert_from: str = ""
     alert_to: str = ""
 
+    # Telegram (optional)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     # AI digest (optional)
     ai_provider: str = ""  # "", "anthropic" or "openai_compatible"
     anthropic_api_key: str = ""
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
         return bool(self.smtp_user and self.smtp_password and (self.alert_from or self.smtp_user))
 
     @property
+    def telegram_enabled(self) -> bool:
+        return bool(self.telegram_bot_token)
+
+    @property
     def ai_enabled(self) -> bool:
         if self.ai_provider == "anthropic":
             return bool(self.anthropic_api_key)
@@ -67,5 +75,6 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     s = Settings()
+    s.smtp_password = s.smtp_password.replace(" ", "")   # Gmail shows app passwords in groups of four
     s.dse_data_dir.mkdir(parents=True, exist_ok=True)
     return s
