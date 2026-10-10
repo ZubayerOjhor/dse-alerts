@@ -281,6 +281,31 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
                       alerts_sent=sent, status="ok")
 
 
+@alerts_app.command(name="test-email")
+def test_email(email: str = typer.Option(..., help="User whose watchlist and address to use")):
+    """Send this user whatever fired on the latest session (or a 'nothing fired' note) to verify SMTP."""
+    from dse_alerts import engine
+    from dse_alerts.notify import deliver
+
+    s = get_settings()
+    if not s.email_enabled:
+        rprint("[red]SMTP is not configured in .env (SMTP_USER / SMTP_PASSWORD)[/red]")
+        raise typer.Exit(1)
+    db = _appdb()
+    u = db.user(email)
+    if not u:
+        raise typer.BadParameter(f"no user {email}")
+    session, results = engine.run(_store(), db, record=False, user_ids=[u["id"]])
+    if session is None or not results:
+        rprint("[red]no data to evaluate[/red]")
+        raise typer.Exit(1)
+    r = results[0]
+    ok = deliver.send_email(s, r.alert_email, session, r.alerts, r.symbols)
+    rprint(f"{'sent' if ok else '[red]failed[/red]'}: {len(r.alerts)} alert(s) for session {session} -> {r.alert_email}")
+    if not ok:
+        raise typer.Exit(1)
+
+
 @alerts_app.command(name="telegram-id")
 def telegram_id():
     """Show the chat ids of people who have messaged the bot (set TELEGRAM_BOT_TOKEN first)."""
