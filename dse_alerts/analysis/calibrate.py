@@ -21,8 +21,9 @@ import pandas as pd
 
 from dse_alerts.data.store import MarketStore
 
-# Post-floor-price history: the only span where today's rules applied throughout.
-DEFAULT_SINCE = dt.date(2024, 1, 19)
+# Full clean history. The floor-price period, the 2020 closure and the 2010-11 crash are
+# masked by regime, so what remains is comparable across years.
+DEFAULT_SINCE = dt.date(2013, 1, 1)
 
 # Candidate alert conditions evaluated in the event study. Each is a SQL predicate on features.
 EVENTS = {
@@ -128,8 +129,10 @@ def write_report(result: dict, path: Path, json_path: Path | None = None) -> Non
         "# Calibration: what \"unusual\" means on the DSE",
         "",
         (f"Generated {dt.date.today()} from {result['sessions']:,} sessions of {result['symbols']} tradeable "
-        f"instruments, {result['first']} to {result['last']} (normal regime only, i.e. after the floor-price "
-        "period ended on 2024-01-18). Regenerate with `dse analysis calibrate`."),
+         f"instruments, {result['first']} to {result['last']}. Sessions in masked regimes are excluded: the "
+         "2020 exchange closure and the floor-price period (2022-07-28 to 2024-01-18), when most stocks could "
+         "not fall. Categories are the instruments' current ones; a stock that moved between A, B and Z over "
+         "the years is counted under today's letter. Regenerate with `dse analysis calibrate`."),
         "",
         "## By category",
         "",

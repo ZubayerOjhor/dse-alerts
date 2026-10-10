@@ -1,9 +1,19 @@
 """Historical archives for years the live DSE site no longer serves.
 
-Supported archive: *Dhaka Stock Exchange Historical Data (1999-2025)*, Mendeley Data,
-doi:10.17632/5mww8rb9td.1, CC BY 4.0 (Sunny, Nafis, Khan). One CSV, 1.52M rows,
-534 instruments, 1999-01-02 to 2025-04-08.
+Two archives are supported; both are CC BY 4.0 on Mendeley Data.
 
+**Curated (preferred): "DSE End-of-Day Financial Dataset with Coverage Metadata"**,
+doi:10.17632/23553sm4tn.4 (Muhammad, Islam, Alam; Southeast University / AUST).
+2012-10-01 to 2026-01-22, 486 instruments incl. the DSEX/DS30/DSES indexes, unadjusted and
+adjusted variants. Its files are only served to a browser, so the user downloads the zip
+and extracts it under ``data/raw/mendeley_23553sm4tn/``; ``find_curated`` locates it.
+Verified 2026-10-10: no duplicates, no weekend sessions, circuit-breaker violations
+0.05-0.5% per year, index levels correct, 100% agreement with the live site on 7,062
+overlapping rows. The unadjusted series is loaded (it is what the exchange printed and
+what the live site serves); the adjusted one differs only around corporate actions.
+
+**Fallback (auto-download): "Dhaka Stock Exchange Historical Data (1999-2025)"**,
+doi:10.17632/5mww8rb9td.1 (Sunny, Nafis, Khan). One CSV, 1.52M rows, 534 instruments.
 What the loader does to it (see docs/data-quality.md for the evidence behind each rule):
 
 * **keeps only rows from 2023-01-01 on.** Before that, the archive's dates are wrong by
@@ -31,8 +41,58 @@ ARCHIVE_FILES = {
     "DSE_Data.csv": "https://data.mendeley.com/public-files/datasets/5mww8rb9td/files/29a65ede-b47a-4c44-abb6-ed237c00880c/file_downloaded",
     "Instruments.txt": "https://data.mendeley.com/public-files/datasets/5mww8rb9td/files/8e9b4e99-7d22-425c-8a4d-6049745ee222/file_downloaded",
 }
-# From this date on the archive is consistent with reality; earlier rows are misdated.
+# From this date on the fallback archive is consistent with reality; earlier rows are misdated.
 RELIABLE_FROM = "2023-01-01"
+
+CURATED_URL = "https://data.mendeley.com/datasets/23553sm4tn/4"
+CURATED_DIRNAME = "mendeley_23553sm4tn"
+CURATED_FILE = "UnAdjusted.csv"
+# The curated file carries the indexes as tickers prefixed with 00; we store them under the usual names.
+INDEX_TICKERS = {"00DSEX": "DSEX", "00DS30": "DS30", "00DSES": "DSES", "00DSMEX": "DSMEX"}
+
+
+def find_curated(raw_dir: Path) -> Path | None:
+    """Locate the curated archive's UnAdjusted.csv wherever the zip was extracted under raw_dir."""
+    root = raw_dir / CURATED_DIRNAME
+    if not root.exists():
+        return None
+    hits = sorted(root.rglob(CURATED_FILE))
+    return hits[0] if hits else None
+
+
+def load_curated(csv_path: Path) -> tuple[pd.DataFrame, dict]:
+    """Return (prices frame, stats) for the curated archive. Same columns as ``load``."""
+    con = duckdb.connect()
+    con.execute(
+        f"""
+        CREATE TABLE raw AS
+        SELECT trim(Ticker) AS symbol, CAST("Date" AS DATE) AS date,
+               Open AS open, High AS high, Low AS low, Close AS close, CAST(Volume AS BIGINT) AS volume
+        FROM read_csv('{csv_path.as_posix()}', header=true)
+        """
+    )
+    stats = {"raw_rows": con.execute("SELECT count(*) FROM raw").fetchone()[0]}
+    index_case = "CASE " + " ".join(f"WHEN symbol = '{k}' THEN '{v}'" for k, v in INDEX_TICKERS.items()) + " ELSE symbol END"
+    con.execute(
+        f"""
+        CREATE TABLE clean AS
+        SELECT {index_case} AS symbol, date, open, high, low, close, volume, 'exact' AS date_quality
+        FROM raw
+        WHERE close > 0 AND high >= low AND symbol <> ''
+          AND (symbol NOT LIKE '00%' OR symbol IN ({", ".join(f"'{k}'" for k in INDEX_TICKERS)}))
+        QUALIFY row_number() OVER (PARTITION BY symbol, date ORDER BY volume DESC, close DESC) = 1
+        """
+    )
+    df = con.execute("SELECT * FROM clean ORDER BY symbol, date").df()
+    stats.update(
+        dropped=stats["raw_rows"] - len(df),
+        rows=len(df),
+        symbols=df["symbol"].nunique(),
+        first=df["date"].min(),
+        last=df["date"].max(),
+    )
+    con.close()
+    return df, stats
 
 
 def download(dest_dir: Path) -> Path:

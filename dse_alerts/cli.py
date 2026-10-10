@@ -90,7 +90,7 @@ def features():
 
 
 @analysis_app.command()
-def calibrate(since: str = typer.Option("2024-01-19", help="Start of the calibration window (normal regime)")):
+def calibrate(since: str = typer.Option("2013-01-01", help="Start of the calibration window; masked regimes are excluded")):
     """Measure how often each candidate alert fires and what followed; writes docs/calibration.md."""
     from dse_alerts.analysis import calibrate as cal
 

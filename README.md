@@ -6,8 +6,8 @@ how the DSE actually behaves (circuit-breaker slabs, A/B/Z categories, price-sen
 news, record dates) and calibrated on 25 years of daily data, so an alert means something
 instead of firing every other day.
 
-> Status: under construction. Phase 1 (data layer) is done; alert rules, email, web UI and
-> the AI digest are in progress. See the plan below.
+> Status: under construction. Phases 1-2 (data layer, calibration) are done; alert rules,
+> email, web UI and the AI digest are in progress. See the plan below.
 
 ## Principles
 
@@ -36,36 +36,40 @@ What that gives you today (checked 2026-10-10):
 
 | | |
 |---|---|
-| Daily OHLCV rows | 480k, 2023-01-01 to the last session, 692 instruments |
+| Daily OHLCV rows | 1.28 million, 2012-10-01 to the last session, 716 instruments |
 | Currently tradeable | 395 (equities + mutual funds), 394 with sector, category, P/E, EPS, free float, 52-week range |
-| Archive vs live agreement | 100% of closes and volumes on 104 overlapping sessions, 8 stocks |
-| Index history | DSEX / DSES / DS30 per session since 2024-10 |
+| Archive vs live agreement | 100% of closes on 7,062 overlapping rows, 10 stocks |
+| Index history | DSEX / DSES / DS30 per session since 2012-10 |
 
-Why "since 2023" and not the 25 years the archive claims: the archive's pre-2023 rows turned
-out to be misdated by months (its DSEX reads 7,356 in March 2021; the real index was ~5,500),
-which a circuit-breaker consistency test exposed. The audit and the decision are written up
-in [docs/data-quality.md](docs/data-quality.md). A longer clean history is an open item.
+Two archives exist for the years the DSE site no longer serves. One claims 25 years but its
+pre-2023 rows are misdated by months (its DSEX reads 7,356 in March 2021; the real index was
+~5,500), which a circuit-breaker consistency test exposed; it is used from 2023 only, as a
+fallback. The other, curated at two Dhaka universities, passes every test from October 2012
+and is the one you should download (one click; the README of `dse data bootstrap` says
+where). The audit is in [docs/data-quality.md](docs/data-quality.md).
 
-## Phase 2: calibration (in progress)
+## Phase 2: calibration (done)
 
 ```bash
 dse analysis features    # per-session returns, volume ratios, circuit-breaker hits, streaks, 250-day ranges
 dse analysis calibrate   # how often each candidate alert fires, and what followed -> docs/calibration.md
 ```
 
-First results from 253k sessions across 395 stocks (Jan 2024 to Oct 2026): a fixed rule like
-"down 10% in 10 days" fires about 23 times a year *per stock* on the DSE, so thresholds have to
-be relative to each stock's own distribution. Closing at the lower circuit is followed by a
-median -6% over the next 20 sessions; a volume spike with a +5% day is followed by a median -3%.
-Full tables: [docs/calibration.md](docs/calibration.md).
+From 977k sessions across 395 stocks (2013 to 2026, floor-price period excluded): a fixed rule
+like "down 10% in 10 days" fires about 19 times a year *per stock* on the DSE, so thresholds
+have to be relative to each stock's own distribution, which `symbol_stats` now holds. Three
+sessions in a row at the lower circuit is rare (once in 50 stock-years) and is followed by a
+median -6% over the next 20 sessions; three in a row at the upper circuit has a +21% *mean*
+but a +1% median, i.e. a few runaway pumps and many fades. Full tables and the forward-return
+evidence for every candidate rule: [docs/calibration.md](docs/calibration.md).
 
 ## Plan
 
 | Phase | What | Status |
 |---|---|---|
 | 1 | Data layer: archive + live ingestion, validation, instrument profiles | done |
-| 2 | Calibration study: what "unusual" means per stock, measured on clean history | in progress |
-| 3 | Alert rules + engine + backtest of each rule | |
+| 2 | Calibration study: what "unusual" means per stock, measured on clean history | done |
+| 3 | Alert rules + engine + backtest of each rule | next |
 | 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | |
 | 5 | Web UI: login, watchlists, alert settings, history | |
 | 6 | AI digest (optional), Docker, docs, public release | |

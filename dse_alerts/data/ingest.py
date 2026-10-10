@@ -21,14 +21,25 @@ REFRESH_OVERLAP_DAYS = 5
 
 
 def bootstrap(store: MarketStore, raw_dir: Path) -> dict:
-    """Load the long-run archive into an empty (or archive-less) store."""
+    """Load the archives into the store. The curated archive (2012-10 onward, manual download)
+    goes first when present; the auto-downloaded fallback (reliable from 2023) fills anything
+    still missing. Archive rows never overwrite live rows, so this is safe to re-run."""
+    out: dict = {}
+    curated = archive.find_curated(raw_dir)
+    if curated:
+        df, stats = archive.load_curated(curated)
+        stats["upserted"] = store.upsert_prices(df, source="archive")
+        out["curated"] = stats
+        log.info("curated archive: %s", stats)
+    else:
+        out["curated"] = f"not found under {raw_dir / archive.CURATED_DIRNAME}; download {archive.CURATED_URL}"
     csv = archive.download(raw_dir / "mendeley_5mww8rb9td")
     df, stats = archive.load(csv)
-    n = store.upsert_prices(df, source="archive")
+    stats["upserted"] = store.upsert_prices(df, source="archive")
+    out["fallback"] = stats
+    log.info("fallback archive: %s", stats)
     store.refresh_instruments()
-    stats["upserted"] = n
-    log.info("archive bootstrap: %s", stats)
-    return stats
+    return out
 
 
 def _month_chunks(start: dt.date, end: dt.date):
@@ -99,8 +110,11 @@ def validate_overlap(raw_dir: Path, symbols: list[str], start: dt.date, end: dt.
     Reads the archive CSV directly so the check is meaningful even after live rows have
     replaced archive rows in the store. Returns one row per symbol: overlap days, close
     match %, volume match %."""
-    csv = archive.download(raw_dir / "mendeley_5mww8rb9td")
-    arc_all, _ = archive.load(csv)
+    curated = archive.find_curated(raw_dir)
+    if curated:
+        arc_all, _ = archive.load_curated(curated)
+    else:
+        arc_all, _ = archive.load(archive.download(raw_dir / "mendeley_5mww8rb9td"))
     arc_all["date"] = pd.to_datetime(arc_all["date"])
     out = []
     for sym in symbols:
