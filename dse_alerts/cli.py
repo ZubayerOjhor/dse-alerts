@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from pathlib import Path
 
 import typer
 from rich import print as rprint
@@ -15,7 +16,9 @@ from dse_alerts.data.store import MarketStore
 
 app = typer.Typer(no_args_is_help=True, help="Self-hosted alerts for the Dhaka Stock Exchange.")
 data_app = typer.Typer(no_args_is_help=True, help="Market data: bootstrap, refresh, validate, status.")
+analysis_app = typer.Typer(no_args_is_help=True, help="Feature table and calibration study.")
 app.add_typer(data_app, name="data")
+app.add_typer(analysis_app, name="analysis")
 
 
 def _store() -> MarketStore:
@@ -76,6 +79,26 @@ def status():
     rprint(f"rows={s['rows']:,} symbols={s['symbols']} range={s['first']} -> {s['last']}")
     for src, n, a, b in s["by_source"]:
         rprint(f"  {src:8s} {n:>10,} rows  {a} -> {b}")
+
+
+@analysis_app.command()
+def features():
+    """Rebuild the per-session feature table from prices (a few seconds)."""
+    from dse_alerts.analysis import features as feats
+
+    rprint(feats.build(_store()))
+
+
+@analysis_app.command()
+def calibrate(since: str = typer.Option("2024-01-19", help="Start of the calibration window (normal regime)")):
+    """Measure how often each candidate alert fires and what followed; writes docs/calibration.md."""
+    from dse_alerts.analysis import calibrate as cal
+
+    s = get_settings()
+    res = cal.run(_store(), dt.date.fromisoformat(since))
+    cal.write_report(res, Path("docs/calibration.md"), s.dse_data_dir / "calibration.json")
+    rprint(f"{res['sessions']:,} sessions, {res['symbols']} symbols, {res['first']} -> {res['last']}")
+    rprint(res["event_stats"][["event", "per_250_sessions", "n", "fwd20_median", "fwd20_positive_share"]].to_string(index=False))
 
 
 if __name__ == "__main__":

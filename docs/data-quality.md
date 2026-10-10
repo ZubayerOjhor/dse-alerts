@@ -9,7 +9,7 @@ were run on 2026-10-10 and can be repeated with `dse data validate`.
 | Source | Coverage | Used for | Licence |
 |---|---|---|---|
 | **dse.com.bd** (live site, via [bdshare](https://github.com/rochi88/bdshare)) | daily history from ~2024-10-14; live quotes; PSI news; dividend declarations; 30-day index summary | the daily refresh and every alert | site data, fetched by each user for their own use |
-| **Mendeley: DSE Historical Data 1999-2025** ([doi:10.17632/5mww8rb9td.1](https://data.mendeley.com/datasets/5mww8rb9td/1)) | 1999-01-02 to 2025-04-08, 534 instruments, 1.52M rows | calibrating thresholds and backtesting alerts | CC BY 4.0 |
+| **Mendeley: DSE Historical Data 1999-2025** ([doi:10.17632/5mww8rb9td.1](https://data.mendeley.com/datasets/5mww8rb9td/1)) | file: 1999-01-02 to 2025-04-08, 534 instruments, 1.52M rows. **Used: 2023-01-01 onward only** (see §3) | the span before the live site's history floor | CC BY 4.0 |
 
 The live site is the ground truth where the two overlap. Nothing from either source is
 redistributed in this repository; `dse data bootstrap` downloads the archive from Mendeley
@@ -42,9 +42,13 @@ Result: the recent part of the archive is an exact copy of what DSE publishes.
   is kept as the more complete record of the session. 2022 falls inside the floor-price
   period and is excluded from volatility calibration anyway (see below).
 
-### 3. The calendar problem (1999-2022)
+### 3. The dates before 2023 are wrong, and not by a little
 
-DSE does not trade on Fridays or Saturdays, yet the archive has sessions dated on them:
+The first warning sign: DSE does not trade on Fridays or Saturdays, yet the archive has
+sessions dated on them, 25-60 weekend dates a year before 2023 and none from 2023 on.
+(Genuine Saturday sessions exist when the government declares a working Saturday around
+Eid; the live data has three, 2025-05-17, 2025-05-24 and 2026-05-23, with the full market
+trading. That is a different thing.)
 
 | Year | Sun-Thu days with no data | Fri/Sat days with data |
 |---|---|---|
@@ -54,24 +58,27 @@ DSE does not trade on Fridays or Saturdays, yet the archive has sessions dated o
 | 2023 | 18 | 0 |
 | 2024 | 27 | 0 |
 
-A clean year has about 20 weekday holidays and almost no weekend sessions, which is exactly
-what 2023-2025 show. (Genuine Saturday sessions do exist: the government occasionally
-declares a Saturday a working day to compensate for long Eid holidays, and DSE trades. The
-live data has three such Saturdays, 2025-05-17, 2025-05-24 and 2026-05-23, each with the
-full market trading. The pre-2023 archive has 25-60 weekend dates a year, which is a
-different thing.) Before 2023, roughly 25-35 sessions a year carry a date one day off (for
-example GP's session of Thursday 2021-03-04 is dated Friday 2021-03-05), and a similar
-number of weekdays have no row at all, often the day the shifted session should have had.
+The decisive test uses the exchange's own rules. Daily moves are capped by slab-based
+circuit breakers (10% for shares under Tk 200, down to 3.75% above Tk 5,000), so a
+close-to-close move beyond the cap plus a 1-point tolerance is impossible unless the
+sequence of sessions is broken. Share of sessions beyond the cap:
 
-What this means for the analysis:
+| Year | 2015 | 2018 | 2021 | 2022 | **2023** | **2024** | **2025** | **2026** |
+|---|---|---|---|---|---|---|---|---|
+| Beyond cap | 17% | 16% | 20% | 9% | **0.03%** | **0.3%** | **0.04%** | **0.02%** |
 
-* The **order** of sessions per instrument is intact, so returns and volume baselines built
-  on consecutive sessions are reliable throughout.
-* **Calendar-dependent** features (day-of-week effects, exact event-day alignment with news
-  or record dates) are only trusted from 2023-01-01 onward.
-* Each row carries a `date_quality` flag: `exact` (2023+ and all live rows), `approx`
-  (pre-2023 weekday) or `shifted` (pre-2023 Fri/Sat).
+The archive's own DSEX series settles it. For the week of 2021-03-01 it reads 5,619 ->
+5,582 -> 5,488 -> 5,511 -> **6,053 -> 6,536 -> 7,356** -> 6,898. The real DSEX was around
+5,500 that week and first reached 7,300 in October 2021. Rows from different months have
+been assigned to the same week; the pre-2023 part of the file is not a time series.
 
+**Decision: the loader keeps only rows dated 2023-01-01 or later** (1,236,288 rows dropped).
+From 2023 the archive passes the circuit-breaker test and matches the live site exactly
+where they overlap. The 2024 figure (0.3%) is the floor-price exit in January 2024, when
+stocks released from their floors moved more than the cap on their first free session.
+
+Rows carry a `date_quality` flag, `exact` for everything kept; loading with an earlier
+`reliable_from` marks older rows `unreliable` and the feature builder ignores them.
 ### 4. Other row-level problems
 
 * 66 rows with a close of 0 (all 2023) and 5 rows with high < low (IBBLPBOND, DSES). Dropped.

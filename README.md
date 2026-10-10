@@ -36,19 +36,35 @@ What that gives you today (checked 2026-10-10):
 
 | | |
 |---|---|
-| Daily OHLCV rows | 1.72 million, 1999-01-02 to the last session |
-| Instruments | 793 seen; 395 currently tradeable (equities + mutual funds) |
+| Daily OHLCV rows | 480k, 2023-01-01 to the last session, 692 instruments |
+| Currently tradeable | 395 (equities + mutual funds), 394 with sector, category, P/E, EPS, free float, 52-week range |
 | Archive vs live agreement | 100% of closes and volumes on 104 overlapping sessions, 8 stocks |
-| Company profiles | 394 with sector, category, P/E, EPS, free float, 52-week range |
+| Index history | DSEX / DSES / DS30 per session since 2024-10 |
 
-How the data was audited and what was fixed: [docs/data-quality.md](docs/data-quality.md).
+Why "since 2023" and not the 25 years the archive claims: the archive's pre-2023 rows turned
+out to be misdated by months (its DSEX reads 7,356 in March 2021; the real index was ~5,500),
+which a circuit-breaker consistency test exposed. The audit and the decision are written up
+in [docs/data-quality.md](docs/data-quality.md). A longer clean history is an open item.
+
+## Phase 2: calibration (in progress)
+
+```bash
+dse analysis features    # per-session returns, volume ratios, circuit-breaker hits, streaks, 250-day ranges
+dse analysis calibrate   # how often each candidate alert fires, and what followed -> docs/calibration.md
+```
+
+First results from 253k sessions across 395 stocks (Jan 2024 to Oct 2026): a fixed rule like
+"down 10% in 10 days" fires about 23 times a year *per stock* on the DSE, so thresholds have to
+be relative to each stock's own distribution. Closing at the lower circuit is followed by a
+median -6% over the next 20 sessions; a volume spike with a +5% day is followed by a median -3%.
+Full tables: [docs/calibration.md](docs/calibration.md).
 
 ## Plan
 
 | Phase | What | Status |
 |---|---|---|
 | 1 | Data layer: archive + live ingestion, validation, instrument profiles | done |
-| 2 | Calibration study: what "unusual" means per stock, from 25 years of sessions | next |
+| 2 | Calibration study: what "unusual" means per stock, measured on clean history | in progress |
 | 3 | Alert rules + engine + backtest of each rule | |
 | 4 | Email delivery, daily scheduled run (GitHub Actions or cron) | |
 | 5 | Web UI: login, watchlists, alert settings, history | |
