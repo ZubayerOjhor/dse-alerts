@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Rules · dse-alerts{% endblock %}
+{% block content %}
+<h1>Rules</h1>
+<p class="muted">Every rule states a fact about the latest session. "Fires per stock-year" and "what followed" come from the backtest on 2013–2026 history (floor-price period excluded); they describe the past, not the future.</p>
+<section class="card">
+  <table>
+    <thead><tr><th>Rule</th><th>What it means</th><th>Defaults</th><th class="num">Fires / stock-year</th><th class="num">Median 20-session move after</th><th class="num">Positive after</th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+    {% set c = cal.get(r.id) %}
+    <tr>
+      <td><strong>{{ r.name }}</strong><div class="muted"><code>{{ r.id }}</code>{% if r.id in opt_in %} · opt-in{% endif %}</div></td>
+      <td>{{ r.description }}</td>
+      <td class="muted">{% for k, v in r.params.items() %}{{ k }}={{ v if v is not none else "baseline" }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="num">{% if c %}{{ c.per_250_sessions | num(2) }}{% else %}–{% endif %}</td>
+      <td class="num">{% if c %}{{ c.fwd20_median | pct }}{% else %}–{% endif %}</td>
+      <td class="num">{% if c %}{{ (c.fwd20_positive_share * 100) | round(0) | int }}%{% else %}–{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

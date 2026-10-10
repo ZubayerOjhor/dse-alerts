@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Watchlist · dse-alerts{% endblock %}
+{% block content %}
+<section class="row between">
+  <div>
+    <h1>Your watchlist</h1>
+    <p class="muted">Latest session: <strong>{{ market.last_session or "no data yet" }}</strong>
+      {% if market.stale %}<span class="badge warn">data may be stale: run <code>dse data refresh</code></span>{% endif %}
+    </p>
+  </div>
+  <form method="post" action="/alerts/check" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button>Check now</button>
+  </form>
+</section>
+
+{% if alerts %}
+<section class="card">
+  <h2>Alerts for {{ market.last_session }}</h2>
+  {% for a in alerts %}
+  <div class="alert {{ a.severity }}">
+    <div class="head"><a href="/symbol/{{ a.symbol }}">{{ a.headline }}</a></div>
+    <div class="detail">{{ a.detail }}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <form method="post" action="/watchlist/add" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="symbol" list="codes" placeholder="Add a trading code, e.g. GP" required autocomplete="off">
+    <datalist id="codes"></datalist>
+    <button class="primary">Add</button>
+  </form>
+  {% if rows %}
+  <table>
+    <thead><tr><th>Symbol</th><th>Name</th><th>Cat.</th><th class="num">Close</th><th class="num">1 session</th><th class="num">10 sessions</th><th class="num">Volume vs 20d</th><th>Circuit</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a></td>
+      <td class="muted">{{ r.name or "" }}</td>
+      <td>{{ r.category or "" }}</td>
+      <td class="num">{{ r.close | num }}</td>
+      <td class="num {{ 'up' if r.ret_1 and r.ret_1 > 0 else 'down' if r.ret_1 and r.ret_1 < 0 else '' }}">{{ r.ret_1 | pct }}</td>
+      <td class="num {{ 'up' if r.ret_10 and r.ret_10 > 0 else 'down' if r.ret_10 and r.ret_10 < 0 else '' }}">{{ r.ret_10 | pct }}</td>
+      <td class="num">{{ r.vol_ratio_20 | num }}x</td>
+      <td>{% if r.hit_upper %}<span class="badge up">upper{% if r.upper_streak > 1 %} ×{{ r.upper_streak }}{% endif %}</span>{% elif r.hit_lower %}<span class="badge down">lower{% if r.lower_streak > 1 %} ×{{ r.lower_streak }}{% endif %}</span>{% endif %}</td>
+      <td><form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><button class="link danger" title="Remove">remove</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nothing watched yet. Add a trading code above; click a symbol later to tune its rules.</p>
+  {% endif %}
+</section>
+
+{% if history %}
+<section class="card">
+  <h2>Recent alerts</h2>
+  <table class="compact">
+    <tbody>
+    {% for a in history %}
+    <tr><td class="muted">{{ a.session_date }}</td><td><span class="dot {{ a.severity }}"></span></td><td><a href="/symbol/{{ a.symbol }}">{{ a.headline }}</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p><a href="/alerts">All alerts</a></p>
+</section>
+{% endif %}
+<script>
+fetch('/instruments.json').then(r => r.json()).then(list => {
+  const dl = document.getElementById('codes');
+  list.forEach(i => { const o = document.createElement('option'); o.value = i.symbol; o.label = i.name; dl.appendChild(o); });
+});
+</script>
+{% endblock %}

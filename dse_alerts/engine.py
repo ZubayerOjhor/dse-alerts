@@ -119,11 +119,12 @@ def evaluate_symbol(snap: MarketSnapshot, symbol: str, overrides: dict) -> list[
     return out
 
 
-def run(store: MarketStore, appdb: AppDB, as_of: dt.date | None = None, record: bool = True) -> tuple[dt.date | None, list[UserResult]]:
+def run(store: MarketStore, appdb: AppDB, as_of: dt.date | None = None, record: bool = True,
+        user_ids: list[int] | None = None) -> tuple[dt.date | None, list[UserResult]]:
     session = latest_session(store, as_of)
     if session is None:
         return None, []
-    users = appdb.users()
+    users = [u for u in appdb.users() if user_ids is None or u["id"] in user_ids]
     items_by_user = {u["id"]: appdb.items(u["id"]) for u in users}
     all_symbols = sorted({it["symbol"] for its in items_by_user.values() for it in its})
     snap = load_snapshot(store, all_symbols, session)

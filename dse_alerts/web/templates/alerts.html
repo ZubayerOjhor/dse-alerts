@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Alerts · dse-alerts{% endblock %}
+{% block content %}
+<h1>Alerts</h1>
+<section class="card">
+  {% if alerts %}
+  <table class="compact">
+    <thead><tr><th>Session</th><th></th><th>Symbol</th><th>What happened</th><th>Rule</th><th>Emailed</th></tr></thead>
+    <tbody>
+    {% for a in alerts %}
+    <tr>
+      <td class="muted">{{ a.session_date }}</td>
+      <td><span class="dot {{ a.severity }}"></span></td>
+      <td><a href="/symbol/{{ a.symbol }}">{{ a.symbol }}</a></td>
+      <td>{{ a.headline }}<div class="detail">{{ a.detail }}</div></td>
+      <td class="muted">{{ a.rule_id }}</td>
+      <td class="muted">{{ "yes" if a.delivered_at else "" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No alerts recorded yet. They appear here after each daily run (or "Check now" on the watchlist).</p>
+  {% endif %}
+</section>
+{% endblock %}

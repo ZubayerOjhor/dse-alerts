@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Error · dse-alerts{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{{ status }}</h1>
+  <p>{{ detail }}</p>
+  <p><a href="/">Back to the watchlist</a></p>
+</section>
+{% endblock %}

@@ -18,9 +18,22 @@ app = typer.Typer(no_args_is_help=True, help="Self-hosted alerts for the Dhaka S
 data_app = typer.Typer(no_args_is_help=True, help="Market data: bootstrap, refresh, validate, status.")
 analysis_app = typer.Typer(no_args_is_help=True, help="Feature table and calibration study.")
 alerts_app = typer.Typer(no_args_is_help=True, help="Watchlists, rules and alert runs.")
+web_app = typer.Typer(no_args_is_help=True, help="The web UI.")
 app.add_typer(data_app, name="data")
 app.add_typer(analysis_app, name="analysis")
 app.add_typer(alerts_app, name="alerts")
+app.add_typer(web_app, name="web")
+
+
+@web_app.command()
+def serve(host: str = typer.Option(None), port: int = typer.Option(None), reload: bool = typer.Option(False)):
+    """Start the web UI (default http://127.0.0.1:8000)."""
+    import uvicorn
+
+    s = get_settings()
+    if s.app_secret_key == "change-me":
+        rprint("[yellow]APP_SECRET_KEY is the default; set a long random value in .env before exposing this beyond localhost[/yellow]")
+    uvicorn.run("dse_alerts.web.app:create_app", factory=True, host=host or s.app_host, port=port or s.app_port, reload=reload)
 
 
 def _store() -> MarketStore:
@@ -132,7 +145,7 @@ def import_watchlist(path: str = typer.Argument("watchlist.json")):
     import json
 
     db = _appdb()
-    spec = json.loads(Path(path).read_text(encoding="utf-8"))
+    spec = json.loads(Path(path).read_text(encoding="utf-8-sig"))   # -sig: tolerate a BOM from Windows tools
     users = spec if isinstance(spec, list) else [spec]
     for u in users:
         uid = db.ensure_user(u["email"], alert_email=u.get("alert_to"))

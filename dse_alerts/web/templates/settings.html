@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Settings · dse-alerts{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<section class="grid2">
+  <div class="card">
+    <h2>Your account</h2>
+    {% if msg %}<p class="error">{{ msg }}</p>{% endif %}
+    <form method="post" action="/settings">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Login email <input value="{{ user.email }}" disabled></label>
+      <label>Send alerts to <input type="email" name="alert_to" value="{{ user.alert_email or user.email }}"></label>
+      <label class="check"><input type="checkbox" name="digest" {% if user.digest_enabled %}checked{% endif %}> Include the written summary in emails when an AI provider is configured</label>
+      <label>New password (leave blank to keep) <input type="password" name="password" minlength="8"></label>
+      <button class="primary">Save</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>This installation</h2>
+    <table class="compact kv">
+      <tr><td>Market data</td><td>{{ market.rows | num(0) }} sessions, {{ market.symbols }} instruments, latest {{ market.last_session }}</td></tr>
+      <tr><td>Email delivery</td><td>{{ "configured (" ~ settings.smtp_user ~ ")" if settings.email_enabled else "not configured; alerts are written to data/outbox/" }}</td></tr>
+      <tr><td>AI summary</td><td>{{ settings.ai_provider ~ " / " ~ (settings.anthropic_model if settings.ai_provider == "anthropic" else settings.openai_compat_model) if settings.ai_enabled else "off" }}</td></tr>
+      <tr><td>Data directory</td><td><code>{{ settings.dse_data_dir }}</code></td></tr>
+    </table>
+    <h2>Recent runs</h2>
+    {% if runs %}
+    <table class="compact"><thead><tr><th>Started</th><th>Session</th><th class="num">Symbols</th><th class="num">New alerts</th><th class="num">Emails</th><th>Status</th></tr></thead><tbody>
+    {% for r in runs %}<tr><td class="muted">{{ r.started_at }}</td><td>{{ r.session_date or "" }}</td><td class="num">{{ r.symbols or "" }}</td><td class="num">{{ r.alerts_new or 0 }}</td><td class="num">{{ r.alerts_sent or 0 }}</td><td>{{ r.status }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No runs yet.</p>{% endif %}
+  </div>
+</section>
+{% endblock %}

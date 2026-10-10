@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} · dse-alerts{% endblock %}
+{% block content %}
+<section class="row between">
+  <div>
+    <h1>{{ symbol }} <span class="muted">{{ inst.name or "" }}</span></h1>
+    <p class="muted">{{ inst.sector or "" }}{% if inst.category %} · category {{ inst.category }}{% endif %}{% if inst.listing_year %} · listed {{ inst.listing_year }}{% endif %}</p>
+  </div>
+  {% if not item %}
+  <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><button class="primary">Watch</button></form>
+  {% endif %}
+</section>
+
+<section class="grid2">
+  <div class="card">
+    <h2>Last 60 sessions</h2>
+    {% if spark %}<svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none"><path d="{{ spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{% endif %}
+    <table class="compact scroll">
+      <thead><tr><th>Date</th><th class="num">Close</th><th class="num">1 s.</th><th class="num">10 s.</th><th class="num">Vol ×20d</th><th>Circuit</th></tr></thead>
+      <tbody>
+      {% for h in hist %}
+      <tr><td>{{ h.date.strftime("%Y-%m-%d") if h.date.strftime else h.date }}</td><td class="num">{{ h.close | num }}</td>
+          <td class="num {{ 'up' if h.ret_1 and h.ret_1 > 0 else 'down' if h.ret_1 and h.ret_1 < 0 else '' }}">{{ h.ret_1 | pct }}</td>
+          <td class="num">{{ h.ret_10 | pct }}</td><td class="num">{{ h.vol_ratio_20 | num }}</td>
+          <td>{% if h.hit_upper %}<span class="badge up">upper</span>{% elif h.hit_lower %}<span class="badge down">lower</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>What is unusual for this stock</h2>
+      {% if stats %}
+      <table class="compact kv">
+        <tr><td>Typical daily move (sd)</td><td class="num">{{ stats.ret1_sd | pct(2) }}</td></tr>
+        <tr><td>95th percentile daily move</td><td class="num">{{ stats.abs_ret1_p95 | pct }}</td></tr>
+        <tr><td>10-session move, 5th / 95th pct</td><td class="num">{{ stats.ret10_p05 | pct }} / {{ stats.ret10_p95 | pct }}</td></tr>
+        <tr><td>20-session move, 5th / 95th pct</td><td class="num">{{ stats.ret20_p05 | pct }} / {{ stats.ret20_p95 | pct }}</td></tr>
+        <tr><td>Volume ratio, 95th pct</td><td class="num">{{ stats.vol_ratio_p95 | num }}x</td></tr>
+        <tr><td>Upper / lower circuit hits per year</td><td class="num">{{ stats.upper_hits_per_250 | num }} / {{ stats.lower_hits_per_250 | num }}</td></tr>
+        <tr><td>Sessions in the baseline</td><td class="num">{{ stats.sessions }}</td></tr>
+      </table>
+      {% else %}<p class="muted">No baseline yet (run <code>dse analysis calibrate</code> or <code>import-stats</code>).</p>{% endif %}
+    </div>
+
+    {% if fund %}
+    <div class="card">
+      <h2>Fundamentals <span class="muted">as of {{ fund.as_of }}</span></h2>
+      <table class="compact kv">
+        <tr><td>P/E</td><td class="num">{{ fund.pe | num }}</td></tr>
+        <tr><td>EPS</td><td class="num">{{ fund.eps | num(2) }}</td></tr>
+        <tr><td>NAV per share</td><td class="num">{{ fund.nav | num(2) }}</td></tr>
+        <tr><td>Dividend yield</td><td class="num">{{ fund.dividend_yield | num(2) }}%</td></tr>
+        <tr><td>Free float</td><td class="num">{{ fund.free_float_pct | num }}%</td></tr>
+        <tr><td>52-week range</td><td class="num">{{ fund.week_low_52 | num }} – {{ fund.week_high_52 | num }}</td></tr>
+        <tr><td>Market cap (Tk)</td><td class="num">{{ fund.market_cap | num(0) }}</td></tr>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if item %}
+<section class="card">
+  <h2>Rules for {{ symbol }}</h2>
+  <p class="muted">Defaults are calibrated on this stock's own history. Untick a rule to silence it; fill a field to override. Percentages are plain numbers (5 = 5%).</p>
+  <form method="post" action="/symbol/{{ symbol }}/rules" class="rules">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for r in rules %}
+    {% set cfg = item.rules.get(r.id) %}
+    {% set enabled = (cfg is not sameas false) and (r.id not in opt_in or cfg is mapping) %}
+    <div class="rule">
+      <label class="rule-head"><input type="checkbox" name="on_{{ r.id }}" {% if enabled %}checked{% endif %}> <strong>{{ r.name }}</strong> <span class="muted">{{ r.description }}</span></label>
+      {% if r.params %}
+      <div class="params">
+        {% for k, default in r.params.items() %}
+        <label>{{ k }}{% if k == 'pct' %} (%){% endif %}
+          <input name="{{ r.id }}__{{ k }}" value="{% if cfg is mapping and k in cfg and cfg[k] is not none %}{% if k == 'pct' %}{{ (cfg[k] * 100) | round(2) }}{% else %}{{ cfg[k] }}{% endif %}{% endif %}" placeholder="{% if default is not none %}{{ default }}{% else %}stock baseline{% endif %}">
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <label>Note <input name="note" value="{{ item.note or '' }}" placeholder="why you watch this"></label>
+    <button class="primary">Save rules</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="grid2">
+  <div class="card">
+    <h2>Price-sensitive news</h2>
+    {% if news %}{% for n in news %}<div class="news"><div class="muted">{{ n.date }}</div><div><strong>{{ n.title }}</strong></div><div class="detail">{{ n.body }}</div></div>{% endfor %}{% else %}<p class="muted">None on file.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Dividends</h2>
+    {% if divs %}<table class="compact"><thead><tr><th>Declared</th><th>Dividend</th><th>Record date</th><th>AGM</th></tr></thead><tbody>
+    {% for d in divs %}<tr><td>{{ d.declared_on }}</td><td>{{ d.dividend }}</td><td>{{ d.record_date or "" }}</td><td>{{ d.agm_date or "" }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">None on file.</p>{% endif %}
+    {% if alerts %}<h2>Past alerts</h2><table class="compact"><tbody>{% for a in alerts %}<tr><td class="muted">{{ a.session_date }}</td><td><span class="dot {{ a.severity }}"></span> {{ a.headline }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  </div>
+</section>
+{% endblock %}
