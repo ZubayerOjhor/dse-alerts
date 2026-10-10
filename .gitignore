@@ -1,0 +1,25 @@
+# secrets
+.env
+*.pem
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# data (users fetch their own; nothing from DSE is redistributed here)
+data/raw/
+data/*.duckdb
+data/*.duckdb.wal
+data/app.sqlite*
+data/outbox/
+
+# local
+logs/
+.DS_Store
+Thumbs.db
