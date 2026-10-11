@@ -166,7 +166,7 @@ dse_alerts/
 calibration/   symbol_stats.csv, the per-stock baselines from the 14-year calibration
 scripts/       scheduler.sh / start.sh for containers; screenshots.py
 docs/          data-quality audit, calibration report, deployment and hosting guides, screenshots
-tests/         59 tests (archive cleaning, store semantics, rules, engine, web, email, i18n, portfolio)
+tests/         60 tests (archive cleaning, store semantics, rules, engine, web, email, i18n, portfolio)
 ```
 
 ## Licence

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 from functools import partial
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from dse_alerts.config import Settings, get_settings
 from dse_alerts.data.store import MarketStore
 from dse_alerts.i18n import LANGS, normalize, t
 from dse_alerts.i18n.alerts import localize
-from dse_alerts.rules import RULES
+from dse_alerts.rules import RULES, Alert
 from dse_alerts.rules.catalog import OPT_IN
 from dse_alerts.web.auth import (
     SESSION_COOKIE,
@@ -67,6 +68,9 @@ def _records(df: pd.DataFrame) -> list[dict]:
             if isinstance(v, pd.Timestamp):
                 r[k] = v.date()
     return out
+
+
+log = logging.getLogger(__name__)
 
 
 def _localized(rows, lang: str) -> list[dict]:
@@ -160,19 +164,35 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         rows.sort(key=lambda r: (order.get(r["kind"], 9), r["symbol"]))
         return items, rows
 
-    def write_digest_if_due(user, session: dt.date | None, alerts: list) -> None:
-        """Write and store the AI note for this user and session when a provider is configured."""
+    def write_digest_if_due(user, session: dt.date | None, alerts: list, lang: str | None = None) -> None:
+        """Write and store the AI note for this user and session when a provider is configured.
+        A note already stored in the requested language is kept; one in another language is
+        rewritten, so the overview follows the EN / বাং toggle."""
         if session is None or not alerts or not settings.ai_enabled or not user["digest_enabled"]:
             return
-        if appdb.digest_for(user["id"], session):
+        lang = lang or dict(user).get("lang") or "en"
+        existing = appdb.digest_for(user["id"], session)
+        if existing and (existing["lang"] or "en") == lang:
             return
         from dse_alerts.ai import digest as ai
 
-        lang = dict(user).get("lang") or "en"
-        text, provider = ai.write_digest_detailed(settings, session, alerts, [i["symbol"] for i in appdb.items(user["id"])],
-                                                  ai.load_rule_evidence(settings), lang=lang)
+        try:
+            text, provider = ai.write_digest_detailed(settings, session, alerts, [i["symbol"] for i in appdb.items(user["id"])],
+                                                      ai.load_rule_evidence(settings), lang=lang)
+        except Exception:  # a provider outage must never break a page
+            log.exception("AI note failed")
+            return
         if text:
             appdb.save_digest(user["id"], session, text, provider, lang)
+
+    def _alert_from_row(row, session: dt.date) -> Alert:
+        d = dict(row)
+        try:
+            ev = json.loads(d.get("evidence_json") or "{}")
+        except ValueError:
+            ev = {}
+        return Alert(symbol=d["symbol"], rule_id=d["rule_id"], date=session, headline=d["headline"], detail=d["detail"],
+                     severity=d.get("severity") or "info", evidence=ev)
 
     # ---- language ---------------------------------------------------------------------
 
@@ -240,6 +260,9 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         ups = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] > 0)
         downs = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] < 0)
         breadth = {"up": ups, "down": downs, "flat": len(rows) - ups - downs, "total": len(rows)}
+        if today:  # first visit after a session (or after a language switch) writes the AI note
+            raw_today = [a for a in history if a["session_date"] == ms["last_session"].isoformat()]
+            write_digest_if_due(user, ms["last_session"], [_alert_from_row(a, ms["last_session"]) for a in raw_today], lang=lang)
         digest = appdb.digest_for(user["id"], ms["last_session"])
         return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},

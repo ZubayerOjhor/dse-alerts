@@ -210,3 +210,38 @@ def test_ai_summary_card(env):
     assert "A quiet session for your list." in page and "groq:llama-3.3-70b-versatile" in page
     row = db.digest_for(uid, last)
     assert row["lang"] == "en" and row["provider"].startswith("groq")
+
+
+def test_overview_writes_ai_note_and_follows_language(env, monkeypatch):
+    import datetime as dt
+
+    from dse_alerts import config
+    from dse_alerts.ai import digest as ai
+    from dse_alerts.rules import Alert
+
+    client, db = env
+    _register(client)
+    uid = db.user("me@example.com")["id"]
+    last = client.get("/").text.split("<strong>")[1].split("</strong>")[0]
+    db.record_alerts(uid, [Alert(symbol="GP", rule_id="big_rise", date=dt.date.fromisoformat(last), headline="GP up",
+                                 detail="d", severity="notable", evidence={"ret": 0.1})])
+    calls = []
+
+    def fake(settings, session, alerts, symbols, rule_evidence, lang="en"):
+        calls.append((session, [a.symbol for a in alerts], lang))
+        return f"note-in-{lang}", "fake:model"
+
+    monkeypatch.setattr(config.Settings, "ai_enabled", property(lambda self: True))
+    monkeypatch.setattr(ai, "write_digest_detailed", fake)
+    monkeypatch.setattr(ai, "load_rule_evidence", lambda s: {})
+
+    page = client.get("/").text
+    assert "note-in-en" in page and "fake:model" in page
+    assert calls == [(dt.date.fromisoformat(last), ["GP"], "en")]
+    assert client.get("/").status_code == 200
+    assert len(calls) == 1                      # stored note is reused
+    client.get("/lang/bn")
+    page = client.get("/").text
+    assert "note-in-bn" in page and len(calls) == 2 and calls[-1][2] == "bn"
+    assert db.digest_for(uid, last)["lang"] == "bn"
+
