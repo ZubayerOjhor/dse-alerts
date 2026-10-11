@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Turn a fresh Ubuntu machine (Oracle Cloud Always Free, or any VPS) into a public dse-alerts
-# instance: Docker, firewall, a clone of the repository, a filled-in .env, and the three
-# containers (web UI, daily scheduler, HTTPS proxy). Idempotent: safe to run again.
+# Turn a fresh Ubuntu machine (Azure for Students, Oracle Cloud Always Free, or any VPS) into
+# a public dse-alerts instance: Docker, swap on small machines, firewall, a clone of the
+# repository, a filled-in .env, and the three containers (web UI, daily scheduler, HTTPS
+# proxy). Idempotent: safe to run again.
 #
 #   curl -fsSL https://raw.githubusercontent.com/ZubayerOjhor/dse-alerts/main/scripts/vm-setup.sh | bash
 #
@@ -17,7 +18,15 @@ if ! command -v docker >/dev/null 2>&1; then
   sudo usermod -aG docker "$USER" || true
 fi
 
-echo "== Firewall: allow 80 and 443 (Oracle's Ubuntu image rejects everything but SSH at the OS level)"
+echo "== Swap (the 1 GB machines need it for the nightly feature build)"
+MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$MEM_MB" -lt 3000 ] && [ ! -f /swapfile ]; then
+  sudo fallocate -l 3G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+  echo "   added a 3 GB swap file (RAM: ${MEM_MB} MB)"
+fi
+
+echo "== Firewall: allow 80 and 443 at the OS level (Oracle's image blocks them; harmless elsewhere)"
 for port in 80 443; do
   sudo iptables -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null || sudo iptables -I INPUT -p tcp --dport "$port" -j ACCEPT
 done

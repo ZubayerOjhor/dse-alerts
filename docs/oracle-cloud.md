@@ -41,9 +41,10 @@ shops and on Amazon can still fail here. In rough order of how often each one he
 7. **Oracle chat support** can finish the signup by hand when the automated check keeps
    failing; it is the slowest route but it does work.
 
-If none of that works in an evening, use a paid host instead of losing more time: Fly.io or
-any VPS takes the card through a normal 3-D Secure payment, and the setup is already
-scripted ([docs/hosting.md](hosting.md)).
+If none of that works in an evening, stop. With the GitHub Student Developer Pack, Azure
+for Students needs no card at all ([docs/azure.md](azure.md)); otherwise Fly.io or any VPS
+takes the card through a normal 3-D Secure payment. The server side is the same script
+either way ([docs/hosting.md](hosting.md)).
 
 ## 2. Open ports 80 and 443 in the network (3 minutes)
 

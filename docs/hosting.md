@@ -7,7 +7,7 @@ and sign up on. Nothing about the code changes; it is the same container with tw
 | Setting | Public instance | Why |
 |---|---|---|
 | `APP_DEMO=1` | on | shows **Try the demo** on the login page, which signs the visitor into a shared, read-only account seeded by `dse demo seed` (sample watchlist, sample portfolio, 40 sessions of alert history). Registration stays open, so a visitor who wants their own list creates an account in ten seconds. |
-| `APP_PUBLIC_URL` | `https://your-app.fly.dev` | the link in the emails. |
+| `APP_PUBLIC_URL` | `https://<ip>.sslip.io` or your domain | the link in the emails. |
 | `APP_SECRET_KEY` | a long random string | signs the session cookies. |
 
 The demo account can never write: adding symbols, changing rules, saving settings and
@@ -19,7 +19,32 @@ fetched by the server; each visitor sees the same local copy. Alert emails go ou
 people who registered with their own address. The AI note is optional and, with Groq's free
 tier, costs nothing. The machine itself is the only bill.
 
-## Option A: Fly.io (recommended, about US$6 a month)
+## Option A: Azure for Students (US$0, no card; needs the GitHub Student Developer Pack)
+
+The pack includes *Azure for Students*: US$100 of credit, 750 hours a month of a small
+machine and 12 months of free storage, verified with a code from GitHub instead of a card.
+750 hours is a whole month, so one `B2ats v2` machine (2 CPUs, 1 GB plus a swap file the
+setup script adds) runs dse-alerts around the clock for nothing. Click by click:
+[docs/azure.md](azure.md). Renewable yearly while you are a student.
+
+## Option B: Oracle Cloud Always Free (US$0, if its card check lets you in)
+
+Oracle's free ARM machine fits well (persistent disk, always on, 12 GB), but its sign-up
+rejects many cards from outside the US and Europe, and there is no appeal beyond support
+chat. The guide, including what to do when the card is refused, is
+[docs/oracle-cloud.md](oracle-cloud.md). On any fresh Ubuntu machine, including any other
+VPS, the server side is one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZubayerOjhor/dse-alerts/main/scripts/vm-setup.sh | bash
+```
+
+It installs Docker, opens ports 80/443, clones the repository, writes `.env` (random
+secret, demo mode on, an `<ip>.sslip.io` hostname so HTTPS works without a domain) and
+starts `docker compose --profile https up -d`: web UI, scheduler and a Caddy proxy that
+fetches the certificate. Add `SMTP_*` and `GROQ_API_KEY` to `.env` afterwards.
+
+## Option C: Fly.io (about US$6 a month)
 
 One small machine in Singapore with a 3 GB volume. The web UI and the daily scheduler run
 in the same container (`scripts/start.sh`), so there is one machine, one disk, one bill.
@@ -60,22 +85,7 @@ being killed, change `memory = "2gb"` and `fly deploy` again (about US$11 a mont
 
 **Updates.** `git pull && fly deploy`. The volume (data, accounts, alert history) survives.
 
-## Option B: Oracle Cloud Always Free (US$0) or any Linux box with Docker
-
-Oracle's free ARM machine is the one genuinely free host that fits: persistent disk, always
-on, enough memory. The click-by-click guide is [docs/oracle-cloud.md](oracle-cloud.md). On
-any fresh Ubuntu machine, the server side is one command:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ZubayerOjhor/dse-alerts/main/scripts/vm-setup.sh | bash
-```
-
-It installs Docker, opens ports 80/443, clones the repository, writes `.env` (random
-secret, demo mode on, an `<ip>.sslip.io` hostname so HTTPS works without a domain) and
-starts `docker compose --profile https up -d`: web UI, scheduler and a Caddy proxy that
-fetches the certificate. Add `SMTP_*` and `GROQ_API_KEY` to `.env` afterwards.
-
-## Option C: Render / Railway
+## Option D: Render / Railway
 
 Both build the `Dockerfile` as-is. Both need a **persistent disk** mounted at `/data`
 (Render: paid plans only; Railway: volumes on any plan) and the start command
@@ -85,6 +95,6 @@ the service will miss the 16:30 run, so use a plan that keeps it awake.
 ## After it is up
 
 * Put the URL in the README's **Try it** line so the repository links to the live demo.
-* `fly ssh console -C "dse alerts run --dry-run"` shows what today's run would send.
+* `sudo docker compose exec web dse alerts run --dry-run` (Fly: `fly ssh console -C "dse alerts run --dry-run"`) shows what today's run would send.
 * `dse demo seed --reset` rebuilds the demo account if a visitor somehow changed it, and
   runs harmlessly every container start (the scheduler calls it).

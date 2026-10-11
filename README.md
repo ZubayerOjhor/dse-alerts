@@ -13,7 +13,7 @@ values your portfolio, and grades the alerts it sent you.
 
 **Try it:** a hosted demo lives at `<set APP_PUBLIC_URL and put the link here>`; press
 *Try the demo* on the login page for a read-only tour, or create an account in ten seconds.
-Hosting your own public copy is one `fly deploy` away: [docs/hosting.md](docs/hosting.md).
+Hosting your own public copy takes one setup script: [docs/hosting.md](docs/hosting.md).
 
 **বাংলা:** the whole thing, pages, emails, Telegram and the AI note, works in Bangla as
 well as English. Switch with the EN / বাং toggle in the header; the choice is saved per user.
@@ -105,8 +105,9 @@ consistency test exposed. The audit is in [docs/data-quality.md](docs/data-quali
 * **Docker**: `docker compose up -d` gives you the web UI and a scheduler.
 
 To put one instance on the internet for other people to try, with the demo account and
-open registration, see [docs/hosting.md](docs/hosting.md): free on Oracle Cloud's Always
-Free machine ([step by step](docs/oracle-cloud.md), one setup script), or Fly.io in five
+open registration, see [docs/hosting.md](docs/hosting.md): free with the GitHub Student
+Developer Pack on Azure ([step by step](docs/azure.md), no card, one setup script), free on
+Oracle Cloud if its card check lets you in ([guide](docs/oracle-cloud.md)), Fly.io in five
 commands, or any box with Docker.
 
 ## Languages
