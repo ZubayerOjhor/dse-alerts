@@ -11,7 +11,7 @@ values your portfolio, and grades the alerts it sent you.
 > **The opposite of a tipping app.** It never tells you what to buy. It tells you what
 > happened, how unusual that is for that stock, and what the record says about such events.
 
-**Try it:** a hosted demo lives at `<set APP_PUBLIC_URL and put the link here>`; press
+**Try it:** a hosted demo lives at <https://172-198-59-154.sslip.io>; press
 *Try the demo* on the login page for a read-only tour, or create an account in ten seconds.
 Hosting your own public copy takes one setup script: [docs/hosting.md](docs/hosting.md).
 
