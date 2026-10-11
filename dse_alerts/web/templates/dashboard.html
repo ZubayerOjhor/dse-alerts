@@ -1,79 +1,93 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
-{% block title %}Overview · dse-alerts{% endblock %}
+{% block title %}{{ t('dash.title') }} · dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Overview</h1>
-    <div class="sub">Latest session <strong>{{ market.last_session or "no data yet" }}</strong>
-      {% if market.stale %}<span class="badge warn">data may be stale: run <code>dse data refresh</code></span>{% endif %}</div>
+    <h1>{{ t('dash.title') }}</h1>
+    <div class="sub">{{ t('dash.latest_session') }} <strong>{{ market.last_session or t('dash.no_data') }}</strong>
+      {% if market.stale %}<span class="badge warn">{{ t('dash.stale') }} <code>dse data refresh</code></span>{% endif %}</div>
   </div>
-  <form method="post" action="/alerts/check" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Check alerts now</button></form>
+  <form method="post" action="/alerts/check" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>{{ t('dash.check_now') }}</button></form>
 </div>
 
 <div class="tiles">
   <div class="tile"><div class="label">DSEX</div><div class="value">{{ index.close | num(0) }}</div>
-    <div class="delta {{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }} today</div>
-    <div class="note">{{ index.ret_20 | pct }} over 20 sessions</div></div>
+    <div class="delta {{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }} {{ t('common.today') }}</div>
+    <div class="note">{{ index.ret_20 | pct }} {{ t('common.over_20') }}</div></div>
   {% if total %}
-  <div class="tile"><div class="label">Portfolio value</div><div class="value">৳ {{ total.value | num(0) }}</div>
-    <div class="delta {{ 'up' if total.day_change > 0 else 'down' if total.day_change < 0 else 'flat' }}">{{ '+' if total.day_change >= 0 }}{{ total.day_change | num(0) }} ({{ total.day_change_pct | pct(2) }}) today</div>
-    <div class="note">{{ total.positions }} positions in {{ accounts }} account{{ 's' if accounts != 1 }}</div></div>
-  <div class="tile"><div class="label">Unrealised P&amp;L</div><div class="value {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 }}">{{ '+' if total.pnl >= 0 }}{{ total.pnl | num(0) }}</div>
-    <div class="delta {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 else 'flat' }}">{{ total.pnl_pct | pct }} on cost ৳ {{ total.cost | num(0) }}</div>
-    <div class="note">vs statement value ৳ {{ total.statement_value | num(0) }}</div></div>
+  <div class="tile"><div class="label">{{ t('dash.portfolio_value') }}</div><div class="value">৳ {{ total.value | num(0) }}</div>
+    <div class="delta {{ 'up' if total.day_change > 0 else 'down' if total.day_change < 0 else 'flat' }}">{{ '+' if total.day_change >= 0 }}{{ total.day_change | num(0) }} ({{ total.day_change_pct | pct(2) }}) {{ t('common.today') }}</div>
+    <div class="note">{{ t('dash.positions_in_one', positions=total.positions) if accounts == 1 else t('dash.positions_in_many', positions=total.positions, n=accounts) }}</div></div>
+  <div class="tile"><div class="label">{{ t('dash.unrealised') }}</div><div class="value {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 }}">{{ '+' if total.pnl >= 0 }}{{ total.pnl | num(0) }}</div>
+    <div class="delta {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 else 'flat' }}">{{ total.pnl_pct | pct }} {{ t('dash.on_cost') }} ৳ {{ total.cost | num(0) }}</div>
+    <div class="note">{{ t('dash.vs_statement') }} ৳ {{ total.statement_value | num(0) }}</div></div>
   {% endif %}
-  <div class="tile"><div class="label">Your symbols today</div><div class="value">{{ breadth.up }} <span class="muted" style="font-size:16px">up</span> · {{ breadth.down }} <span class="muted" style="font-size:16px">down</span></div>
-    <div class="delta flat">{{ breadth.flat }} unchanged of {{ breadth.total }} watched</div>
-    <div class="note">{{ alerts | length }} alert{{ 's' if alerts | length != 1 }} this session</div></div>
+  <div class="tile"><div class="label">{{ t('dash.your_symbols') }}</div><div class="value">{{ breadth.up }} <span class="muted" style="font-size:16px">{{ t('dash.up') }}</span> · {{ breadth.down }} <span class="muted" style="font-size:16px">{{ t('dash.down') }}</span></div>
+    <div class="delta flat">{{ t('dash.unchanged_of', flat=breadth.flat, total=breadth.total) }}</div>
+    <div class="note">{{ t('dash.alerts_one') if alerts | length == 1 else t('dash.alerts_many', n=alerts | length) }}</div></div>
 </div>
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>DSEX, last 6 months</h2>
+    <h2>{{ t('dash.dsex_6m') }}</h2>
     <div id="idx" class="chart short" data-chart="lines" data-src="idx-data"></div>
     <script type="application/json" id="idx-data">{{ index_chart | tojson }}</script>
   </div>
   <div class="card">
-    <h2>Alerts for {{ market.last_session }}</h2>
+    <h2>{{ t('dash.alerts_for', date=market.last_session) }}</h2>
     {% if alerts %}{% for a in alerts %}
     <div class="alert {{ a.severity }}"><div class="head"><a href="/symbol/{{ a.symbol }}">{{ a.headline }}</a></div><div class="detail">{{ a.detail }}</div></div>
-    {% endfor %}{% else %}<p class="muted">Nothing fired on your symbols this session.</p>{% endif %}
+    {% endfor %}{% else %}<p class="muted">{{ t('dash.nothing_fired') }}</p>{% endif %}
   </div>
+</div>
+
+<div class="card ai">
+  <h2><span class="ai-mark" aria-hidden="true">✦</span> {{ t('ai.title') }}</h2>
+  {% if digest %}
+  <div class="digest">{{ digest.text }}</div>
+  <p class="muted small" style="margin:10px 0 0">{{ t('ai.by', provider=digest.provider or 'AI') }}</p>
+  {% elif not ai_on %}
+  <p class="muted">{{ t('ai.off') }}</p>
+  {% elif not alerts %}
+  <p class="muted">{{ t('ai.no_alerts') }}</p>
+  {% else %}
+  <p class="muted">{{ t('ai.none_yet') }}</p>
+  {% endif %}
 </div>
 
 <div class="card">
   <div class="row between" style="margin-bottom:10px">
-    <h2 style="margin:0">Watched symbols</h2>
+    <h2 style="margin:0">{{ t('dash.watched') }}</h2>
     <form method="post" action="/watchlist/add" class="row">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input name="symbol" list="codes" placeholder="Add a trading code, e.g. GP" required autocomplete="off" style="width:220px">
-      <select name="kind"><option value="watch">watch</option><option value="target">target (considering buying)</option></select>
+      <input name="symbol" list="codes" placeholder="{{ t('dash.add_placeholder') }}" required autocomplete="off" style="width:220px">
+      <select name="kind"><option value="watch">{{ t('dash.kind_watch') }}</option><option value="target">{{ t('dash.kind_target') }}</option></select>
       <datalist id="codes"></datalist>
-      <button class="primary">Add</button>
+      <button class="primary">{{ t('common.add') }}</button>
     </form>
   </div>
   {% if rows %}
   <table>
-    <thead><tr><th>Symbol</th><th></th><th>Cat.</th><th class="num">Close</th><th class="num">1 session</th><th class="num">20 sessions</th><th class="num">Vol ×20d</th><th>Circuit</th><th>60 sessions</th><th></th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th></th><th>{{ t('common.cat') }}</th><th class="num">{{ t('common.close') }}</th><th class="num">{{ t('common.session_1') }}</th><th class="num">{{ t('common.sessions_20') }}</th><th class="num">{{ t('common.vol20') }}</th><th>{{ t('common.circuit') }}</th><th>{{ t('common.sessions_60') }}</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a><div class="muted small name" title="{{ r.name or '' }}">{{ r.name or "" }}</div></td>
-      <td><span class="badge {{ r.kind }}">{{ r.kind }}</span></td>
+      <td><span class="badge {{ r.kind }}">{{ t('common.' ~ r.kind) }}</span></td>
       <td>{% if r.category %}<span class="badge cat-{{ r.category }}">{{ r.category }}</span>{% endif %}</td>
       <td class="num">{{ r.close | num }}</td>
       <td class="num {{ 'up' if r.ret_1 and r.ret_1 > 0 else 'down' if r.ret_1 and r.ret_1 < 0 else '' }}">{{ r.ret_1 | pct }}</td>
       <td class="num {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}">{{ r.ret_20 | pct }}</td>
       <td class="num">{{ r.vol_ratio_20 | num }}x</td>
-      <td>{% if r.hit_upper %}<span class="badge up">upper{% if r.upper_streak > 1 %} ×{{ r.upper_streak }}{% endif %}</span>{% elif r.hit_lower %}<span class="badge down">lower{% if r.lower_streak > 1 %} ×{{ r.lower_streak }}{% endif %}</span>{% endif %}</td>
+      <td>{% if r.hit_upper %}<span class="badge up">{{ t('common.upper') }}{% if r.upper_streak > 1 %} ×{{ r.upper_streak }}{% endif %}</span>{% elif r.hit_lower %}<span class="badge down">{{ t('common.lower') }}{% if r.lower_streak > 1 %} ×{{ r.lower_streak }}{% endif %}</span>{% endif %}</td>
       <td><svg class="spark {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ r.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
-      <td><form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><button class="link danger">remove</button></form></td>
+      <td><form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><button class="link danger">{{ t('common.remove') }}</button></form></td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="muted">Nothing watched yet. Add a trading code above, or import holdings with <code>dse portfolio import</code>.</p>{% endif %}
+  {% else %}<p class="muted">{{ t('dash.nothing_watched') }} <code>dse portfolio import</code>.</p>{% endif %}
 </div>
 <script>
 fetch('/instruments.json', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (list) {

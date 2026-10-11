@@ -21,11 +21,81 @@ analysis_app = typer.Typer(no_args_is_help=True, help="Feature table and calibra
 alerts_app = typer.Typer(no_args_is_help=True, help="Watchlists, rules and alert runs.")
 web_app = typer.Typer(no_args_is_help=True, help="The web UI.")
 portfolio_app = typer.Typer(no_args_is_help=True, help="Holdings: import, value, targets.")
+demo_app = typer.Typer(no_args_is_help=True, help="The shared read-only demo account for a public instance (APP_DEMO=1).")
 app.add_typer(data_app, name="data")
 app.add_typer(analysis_app, name="analysis")
 app.add_typer(alerts_app, name="alerts")
 app.add_typer(web_app, name="web")
 app.add_typer(portfolio_app, name="portfolio")
+app.add_typer(demo_app, name="demo")
+
+# A sample list for the demo account: liquid, well-known A-category names across sectors.
+# Symbols missing from the local instrument table are skipped, so this works on any data set.
+DEMO_WATCH = ["GP", "BRACBANK", "SQURPHARMA", "BXPHARMA", "CITYBANK", "RENATA", "BATBC", "OLYMPIC", "WALTONHIL", "PUBALIBANK"]
+DEMO_TARGETS = ["ORIONINFU", "IPDC", "APEXFOODS"]
+DEMO_HOLDINGS = {
+    "Demo BO 1": [("GP", 200), ("BRACBANK", 1000), ("SQURPHARMA", 300), ("BXPHARMA", 500), ("CITYBANK", 1500)],
+    "Demo BO 2": [("RENATA", 50), ("BATBC", 100), ("OLYMPIC", 400), ("WALTONHIL", 60), ("PUBALIBANK", 1200)],
+}
+
+
+@demo_app.command()
+def seed(backfill: int = typer.Option(40, help="Sessions of alert history to compute, so the scorecard has rows"),
+         reset: bool = typer.Option(False, help="Drop the demo account's lists and holdings first")):
+    """Create or refresh the demo account: sample watchlist, targets, a synthetic portfolio, alert history.
+
+    The portfolio is round lots priced at the close of about a year ago; it is nobody's real
+    holdings. The account has no password: only the "Try the demo" button logs into it.
+    """
+    from dse_alerts import engine
+    from dse_alerts.appdb import DEMO_EMAIL
+
+    db = _appdb()
+    store = _store()
+    known = set(store.instruments()["symbol"])
+    uid = db.ensure_user(DEMO_EMAIL)
+    if reset:
+        with db.connect() as con:
+            con.execute("DELETE FROM holdings WHERE account_id IN (SELECT id FROM accounts WHERE user_id = ?)", (uid,))
+            con.execute("DELETE FROM accounts WHERE user_id = ?", (uid,))
+            con.execute("DELETE FROM watchlist_items WHERE watchlist_id IN (SELECT id FROM watchlists WHERE user_id = ?)", (uid,))
+            con.execute("DELETE FROM alerts WHERE user_id = ?", (uid,))
+            con.execute("DELETE FROM digests WHERE user_id = ?", (uid,))
+    db.update_user(uid, alert_email=DEMO_EMAIL, digest_enabled=1, telegram_chat_id=None)
+    wl = db.ensure_watchlist(uid)
+    for sym in DEMO_WATCH:
+        if sym in known:
+            db.add_item(wl, sym, {}, kind="watch")
+    for sym in DEMO_TARGETS:
+        if sym in known:
+            db.add_item(wl, sym, {}, kind="target")
+    # a year-old close as the purchase price gives a realistic spread of gains and losses
+    with store.connect(read_only=True) as con:
+        costs = {r[0]: float(r[1]) for r in con.execute(
+            """
+            SELECT symbol, close FROM (
+                SELECT symbol, close, row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn FROM features WHERE close > 0
+            ) WHERE rn = 250
+            """).fetchall()}
+        latest = {r[0]: float(r[1]) for r in con.execute(
+            "SELECT symbol, close FROM features WHERE close > 0 QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY date DESC) = 1").fetchall()}
+    n = 0
+    for account, lots in DEMO_HOLDINGS.items():
+        acc = db.ensure_account(uid, account)
+        for sym, qty in lots:
+            price = costs.get(sym) or latest.get(sym)
+            if sym in known and price:
+                db.upsert_holding(acc, sym, qty, round(price, 1), note="demo")
+                n += 1
+    rprint(f"demo account #{uid}: {len(db.items(uid))} symbols, {n} holdings")
+    if backfill > 0:
+        with store.connect(read_only=True) as con:
+            dates = [r[0] for r in con.execute("SELECT DISTINCT date FROM features ORDER BY date DESC LIMIT ?", [backfill]).fetchall()]
+        total = 0
+        for d in reversed(dates):
+            _, results = engine.run(store, db, as_of=d, record=True, user_ids=[uid])
+            total += sum(len(r.new_alerts) for r in results)
+        rprint(f"backfilled {len(dates)} sessions: {total} alerts recorded")
 
 
 @portfolio_app.command(name="import")
@@ -312,11 +382,14 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
     evidence = ai.load_rule_evidence(s) if s.ai_enabled else {}
     for r in results:
         u = db.user_by_id(r.user_id)
+        lang = (dict(u).get("lang") if u else None) or "en"
         summary = None
         if r.new_alerts and s.ai_enabled and u and u["digest_enabled"]:
-            summary = ai.write_digest(s, session, r.new_alerts, r.symbols, evidence)
+            summary, provider = ai.write_digest_detailed(s, session, r.new_alerts, r.symbols, evidence, lang=lang)
             rprint("[green]AI summary written[/green]" if summary else "[yellow]AI summary unavailable; sending alerts without it[/yellow]")
-        ctx = build_context(_store(), db, r.user_id, session, r.new_alerts, summary, base_url=f"http://{s.app_host}:{s.app_port}")
+            if summary and not dry_run:
+                db.save_digest(r.user_id, session, summary, provider, lang)   # shown on the overview page
+        ctx = build_context(_store(), db, r.user_id, session, r.new_alerts, summary, base_url=s.base_url, lang=lang)
         deliver.to_console(r.email, ctx)
         if r.missing_symbols:
             rprint(f"[yellow]no data for:[/yellow] {', '.join(r.missing_symbols)}")
@@ -360,7 +433,7 @@ def test_email(email: str = typer.Option(..., help="User whose watchlist and add
         rprint("[red]no data to evaluate[/red]")
         raise typer.Exit(1)
     r = results[0]
-    ctx = build_context(_store(), db, u["id"], session, r.alerts, None, base_url=f"http://{s.app_host}:{s.app_port}")
+    ctx = build_context(_store(), db, u["id"], session, r.alerts, None, base_url=s.base_url)
     deliver.to_outbox(s.outbox_dir, r.email, ctx)
     ok = deliver.send_email(s, r.alert_email, ctx)
     rprint(f"{'sent' if ok else '[red]failed[/red]'}: {len(r.alerts)} alert(s) for session {session} -> {r.alert_email}")

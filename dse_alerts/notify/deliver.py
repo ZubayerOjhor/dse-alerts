@@ -9,6 +9,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from dse_alerts.config import Settings
+from dse_alerts.i18n import t
+from dse_alerts.i18n.alerts import localize
 from dse_alerts.notify import render
 from dse_alerts.notify.context import DeliveryContext
 from dse_alerts.rules import Alert
@@ -23,34 +25,37 @@ def to_outbox(outbox: Path, email: str, ctx: DeliveryContext) -> Path:
     outbox.mkdir(parents=True, exist_ok=True)
     safe = "".join(c if c.isalnum() or c in "@.-_" else "_" for c in email)
     p = outbox / f"{ctx.session.isoformat()}_{safe}.txt"
-    p.write_text(render.subject(ctx.session, ctx.alerts) + "\n\n" + render.text(ctx), encoding="utf-8")
+    p.write_text(render.subject(ctx.session, ctx.alerts, ctx.lang) + "\n\n" + render.text(ctx), encoding="utf-8")
     p.with_suffix(".html").write_text(render.html_body(ctx), encoding="utf-8")
     return p
 
 
 def to_console(email: str, ctx: DeliveryContext) -> None:
-    print(f"--- {email}: {render.subject(ctx.session, ctx.alerts)}")
+    print(f"--- {email}: {render.subject(ctx.session, ctx.alerts, ctx.lang)}")
     print(render.text(ctx))
 
 
-def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = None, ctx: DeliveryContext | None = None) -> str:
+def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = None, ctx: DeliveryContext | None = None,
+                  lang: str | None = None) -> str:
     """A compact plain-text rendering for chat: headline per alert, one detail line each."""
-    lines = [f"DSE alerts, session {session.isoformat()}"]
+    lang = lang or (ctx.lang if ctx else "en")
+    lines = [t(lang, "tg.title", date=session.isoformat())]
     if ctx and ctx.index.get("close"):
         lines.append(f"DSEX {ctx.index['close']:,.0f} ({render._pct(ctx.index.get('ret_1'), 2)})")
     if digest:
         lines += ["", digest.strip()]
     if not alerts:
-        lines.append("Nothing fired.")
+        lines.append(t(lang, "tg.nothing"))
     for a in render.sort_alerts(alerts):
         mark = {"high": "!!", "notable": "!", "info": "·"}.get(a.severity, "·")
-        lines += ["", f"{mark} {a.headline}", f"   {a.detail}"]
+        head, det = localize(a.rule_id, a.symbol, a.evidence, a.headline, a.detail, lang)
+        lines += ["", f"{mark} {head}", f"   {det}"]
     if ctx and ctx.portfolio:
         p = ctx.portfolio
         sign = "+" if (p.get("day_change") or 0) >= 0 else ""
-        lines += ["", (f"Portfolio Tk {p['value']:,.0f}, {sign}{p.get('day_change') or 0:,.0f} today, "
-                       f"P&L {render._pct(p.get('pnl_pct'))}")]
-    lines += ["", "Observations, not advice."]
+        lines += ["", t(lang, "tg.portfolio", value=f"{p['value']:,.0f}", chg=f"{sign}{p.get('day_change') or 0:,.0f}",
+                        pnl=render._pct(p.get("pnl_pct")))]
+    lines += ["", t(lang, "tg.footer")]
     return "\n".join(lines)
 
 
@@ -113,7 +118,7 @@ def send_email(settings: Settings, to: str, ctx: DeliveryContext) -> bool:
     if not settings.email_enabled:
         return False
     msg = EmailMessage()
-    msg["Subject"] = render.subject(ctx.session, ctx.alerts)
+    msg["Subject"] = render.subject(ctx.session, ctx.alerts, ctx.lang)
     msg["From"] = settings.alert_from or settings.smtp_user
     msg["To"] = to
     msg.set_content(render.text(ctx))

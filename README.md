@@ -11,6 +11,13 @@ values your portfolio, and grades the alerts it sent you.
 > **The opposite of a tipping app.** It never tells you what to buy. It tells you what
 > happened, how unusual that is for that stock, and what the record says about such events.
 
+**Try it:** a hosted demo lives at `<set APP_PUBLIC_URL and put the link here>`; press
+*Try the demo* on the login page for a read-only tour, or create an account in ten seconds.
+Hosting your own public copy is one `fly deploy` away: [docs/hosting.md](docs/hosting.md).
+
+**বাংলা:** the whole thing, pages, emails, Telegram and the AI note, works in Bangla as
+well as English. Switch with the EN / বাং toggle in the header; the choice is saved per user.
+
 ![Overview](docs/screens/overview-light.png)
 
 ## What you get
@@ -23,8 +30,10 @@ values your portfolio, and grades the alerts it sent you.
 | **Targets** | Companies you are considering, side by side: 20/60/250-session moves, position in the 52-week range, trend vs moving averages, volume, P/E against the sector median, last filing. |
 | **Symbol page** | Candlesticks with SMA 20/50 and volume, the stock vs DSEX indexed to 100, "what is true right now" panels, fundamentals, filings, dividends, and the rule switches for that stock. |
 | **Scorecard** | What happened 5 and 20 sessions after each alert you were sent, next to the backtest's expectation. It grades the rules, not you. |
-| **AI summary (optional)** | A short written note per delivery from Groq, OpenRouter or Claude, in that order of preference. Told never to advise. Off unless you add a key. |
+| **AI summary (optional)** | A short written note per session from Groq, OpenRouter or Claude, in that order of preference, shown on the overview and included in the email. Told never to advise. Off unless you add a key. |
+| **Two languages** | English and Bangla, for every page, every alert, the email, Telegram and the AI note. One toggle in the header. |
 | **Four themes** | Light, dark, midnight, terminal. Charts follow the theme. |
+| **Demo mode** | For a public instance: a shared read-only account with a sample list and portfolio, so visitors can look around without signing up. |
 
 ## Principles
 
@@ -95,6 +104,18 @@ consistency test exposed. The audit is in [docs/data-quality.md](docs/data-quali
 * **Your own machine**: Task Scheduler or cron running `dse data refresh && dse analysis features && dse alerts run`.
 * **Docker**: `docker compose up -d` gives you the web UI and a scheduler.
 
+To put one instance on the internet for other people to try, with the demo account and
+open registration, see [docs/hosting.md](docs/hosting.md) (Fly.io in five commands, or any
+box with Docker).
+
+## Languages
+
+The UI, emails, Telegram messages and the AI note come in English and Bangla. The header
+toggle sets a cookie for the browser; Settings saves the preference for the account, and
+that is what the daily email uses. Translations live in two JSON files
+(`dse_alerts/i18n/en.json`, `bn.json`); alert headlines are rebuilt in Bangla from the
+numbers each rule stores, so past alerts translate too. Adding a language is one more file.
+
 ## The rules
 
 | Rule | Default | Fires per stock-year | Median 20-session move after |
@@ -124,6 +145,7 @@ dse alerts      rules | init | add | remove | list | import | run | backtest | s
                 test-email | test-telegram | telegram-id
 dse portfolio   import | show | target
 dse web         serve
+dse demo        seed
 ```
 
 ## Repository map
@@ -137,10 +159,12 @@ dse_alerts/
   portfolio.py holdings valuation and history; evidence.py "what is true right now"
   notify/      delivery context, text + HTML rendering, email, Telegram, outbox
   ai/          optional summary via Groq / OpenRouter / Anthropic
-  web/         FastAPI app, templates, vendored chart library, four themes
+  i18n/        English and Bangla catalogs; alert headlines rebuilt per language
+  web/         FastAPI app, templates, vendored chart library, four themes, demo mode
 calibration/   symbol_stats.csv, the per-stock baselines from the 14-year calibration
-docs/          data-quality audit, calibration report, deployment guide, screenshots
-tests/         38 tests (archive cleaning, store semantics, rules, engine, web, email, portfolio)
+scripts/       scheduler.sh / start.sh for containers; screenshots.py
+docs/          data-quality audit, calibration report, deployment and hosting guides, screenshots
+tests/         59 tests (archive cleaning, store semantics, rules, engine, web, email, i18n, portfolio)
 ```
 
 ## Licence

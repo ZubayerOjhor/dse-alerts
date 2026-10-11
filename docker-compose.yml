@@ -24,15 +24,9 @@ services:
     volumes:
       - dse-data:/data
     restart: unless-stopped
-    # first start: load the fallback archive and baselines; then loop on the daily schedule
-    command: >
-      sh -c "dse data bootstrap && dse data refresh && dse data instruments && dse analysis features && dse analysis import-stats;
-             while true; do
-               if [ \"$$(date +%u)\" -le 4 ] || [ \"$$(date +%u)\" -eq 7 ]; then
-                 if [ \"$$(date +%H%M)\" = \"1630\" ]; then dse data refresh && dse analysis features && dse alerts run; sleep 60; fi;
-               fi;
-               sleep 30;
-             done"
+    # first start: load the archive and baselines (and seed the demo account when APP_DEMO=1);
+    # then refresh, rebuild features and run the alerts at 16:30 Dhaka time on trading days
+    command: ["sh", "scripts/scheduler.sh"]
 
 volumes:
   dse-data:

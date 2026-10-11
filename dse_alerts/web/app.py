@@ -2,6 +2,13 @@
 from the browser (the chart library is vendored), no analytics. Everything it shows comes
 from the two local databases.
 
+Languages: English and Bangla. A visitor's choice lives in a cookie (``/lang/{code}``); a
+logged-in user's saved preference (Settings) is the fallback, then ``APP_DEFAULT_LANG``.
+
+Demo mode (``APP_DEMO=1``): the login page offers "Try the demo", which signs the visitor
+into a shared account seeded by ``dse demo seed``. That account is read-only; every route
+that writes refuses it with a note pointing at registration.
+
 Run with ``dse web serve`` (uvicorn) or mount ``create_app()`` yourself.
 """
 
@@ -9,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -18,9 +26,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from dse_alerts import engine, evidence, market, portfolio
-from dse_alerts.appdb import AppDB
+from dse_alerts.appdb import DEMO_EMAIL, AppDB, is_demo
 from dse_alerts.config import Settings, get_settings
 from dse_alerts.data.store import MarketStore
+from dse_alerts.i18n import LANGS, normalize, t
+from dse_alerts.i18n.alerts import localize
 from dse_alerts.rules import RULES
 from dse_alerts.rules.catalog import OPT_IN
 from dse_alerts.web.auth import (
@@ -32,6 +42,8 @@ from dse_alerts.web.auth import (
 )
 
 HERE = Path(__file__).parent
+LANG_COOKIE = "dse_lang"
+LANG_MAX_AGE = 60 * 60 * 24 * 365
 
 
 def _isnan(x):
@@ -54,6 +66,17 @@ def _records(df: pd.DataFrame) -> list[dict]:
         for k, v in r.items():
             if isinstance(v, pd.Timestamp):
                 r[k] = v.date()
+    return out
+
+
+def _localized(rows, lang: str) -> list[dict]:
+    """Alert rows (sqlite Rows or dicts) with headline/detail in ``lang``."""
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["headline"], d["detail"] = localize(d.get("rule_id", ""), d.get("symbol", ""), d.get("evidence_json") or d.get("evidence"),
+                                              d.get("headline", ""), d.get("detail", ""), lang)
+        out.append(d)
     return out
 
 
@@ -88,14 +111,32 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         request.state.user = u
         return u
 
+    def lang_of(request: Request, user=None) -> str:
+        cookie = request.cookies.get(LANG_COOKIE)
+        if cookie in LANGS:
+            return cookie
+        if user is not None:
+            saved = dict(user).get("lang")
+            if saved in LANGS:
+                return saved
+        return normalize(settings.app_default_lang)
+
+    def writable(request: Request, user) -> None:
+        """Refuse writes from the shared demo account."""
+        if is_demo(user):
+            raise HTTPException(status_code=403, detail="demo.readonly")
+
     def check_csrf(request: Request, token: str):
         if token != getattr(request.state, "csrf", None):
             raise HTTPException(status_code=400, detail="bad csrf token")
 
     def render(request: Request, name: str, status_code: int = 200, **ctx):
         u = getattr(request.state, "user", None)
+        lang = lang_of(request, u)
         return templates.TemplateResponse(request, name, {"user": u, "csrf": getattr(request.state, "csrf", ""),
-                                                          "settings": settings, "now": dt.datetime.now(), **ctx},
+                                                          "settings": settings, "now": dt.datetime.now(),
+                                                          "lang": lang, "langs": LANGS, "t": partial(t, lang),
+                                                          "demo": is_demo(u), **ctx},
                                           status_code=status_code)
 
     def set_session(resp, user_id: int):
@@ -119,19 +160,48 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         rows.sort(key=lambda r: (order.get(r["kind"], 9), r["symbol"]))
         return items, rows
 
+    def write_digest_if_due(user, session: dt.date | None, alerts: list) -> None:
+        """Write and store the AI note for this user and session when a provider is configured."""
+        if session is None or not alerts or not settings.ai_enabled or not user["digest_enabled"]:
+            return
+        if appdb.digest_for(user["id"], session):
+            return
+        from dse_alerts.ai import digest as ai
+
+        lang = dict(user).get("lang") or "en"
+        text, provider = ai.write_digest_detailed(settings, session, alerts, [i["symbol"] for i in appdb.items(user["id"])],
+                                                  ai.load_rule_evidence(settings), lang=lang)
+        if text:
+            appdb.save_digest(user["id"], session, text, provider, lang)
+
+    # ---- language ---------------------------------------------------------------------
+
+    @app.get("/lang/{code}")
+    def set_lang(request: Request, code: str):
+        resp = RedirectResponse(request.headers.get("referer") or "/", status_code=303)
+        resp.set_cookie(LANG_COOKIE, normalize(code), max_age=LANG_MAX_AGE, samesite="lax")
+        return resp
+
     # ---- auth pages -------------------------------------------------------------------
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):
         if not appdb.users():
             return RedirectResponse("/register", status_code=303)
-        return render(request, "login.html", error=None)
+        return render(request, "login.html", error=None, demo_available=settings.app_demo and appdb.user(DEMO_EMAIL) is not None)
 
     @app.post("/login")
     def login(request: Request, email: str = Form(...), password: str = Form(...)):
         u = appdb.user(email.strip().lower())
         if not u or not verify_password(u["password_hash"], password):
-            return render(request, "login.html", error="Wrong email or password.")
+            return render(request, "login.html", error="login.wrong", demo_available=settings.app_demo and appdb.user(DEMO_EMAIL) is not None)
+        return set_session(RedirectResponse("/", status_code=303), u["id"])
+
+    @app.api_route("/demo", methods=["GET", "POST"])
+    def demo_login(request: Request):
+        u = appdb.user(DEMO_EMAIL) if settings.app_demo else None
+        if not u:
+            raise HTTPException(status_code=404, detail="demo mode is off")
         return set_session(RedirectResponse("/", status_code=303), u["id"])
 
     @app.get("/register", response_class=HTMLResponse)
@@ -142,12 +212,13 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     def register(request: Request, email: str = Form(...), password: str = Form(...), alert_to: str = Form("")):
         email = email.strip().lower()
         if len(password) < 8:
-            return render(request, "register.html", error="Use at least 8 characters.", first=not appdb.users())
+            return render(request, "register.html", error="register.short", first=not appdb.users())
         existing = appdb.user(email)
-        if existing and existing["password_hash"]:
-            return render(request, "register.html", error="That email already has an account. Log in instead.", first=False)
+        if (existing and existing["password_hash"]) or email == DEMO_EMAIL:
+            return render(request, "register.html", error="register.exists", first=False)
         uid = appdb.ensure_user(email, hash_password(password), alert_to.strip() or None)
         appdb.ensure_watchlist(uid)
+        appdb.update_user(uid, lang=lang_of(request))
         return set_session(RedirectResponse("/", status_code=303), uid)
 
     @app.post("/logout")
@@ -160,38 +231,44 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, user=Depends(require_user)):
+        lang = lang_of(request, user)
         items, rows = watch_rows(user["id"])
         ms = market_status()
         history = appdb.alert_history(user["id"], limit=50)
-        today = [a for a in history if ms["last_session"] and a["session_date"] == ms["last_session"].isoformat()]
+        today = _localized([a for a in history if ms["last_session"] and a["session_date"] == ms["last_session"].isoformat()], lang)
         val = portfolio.valuation(store, appdb, user["id"])
         ups = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] > 0)
         downs = sum(1 for r in rows if not _isnan(r["ret_1"]) and r["ret_1"] < 0)
         breadth = {"up": ups, "down": downs, "flat": len(rows) - ups - downs, "total": len(rows)}
+        digest = appdb.digest_for(user["id"], ms["last_session"])
         return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
-                      total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth)
+                      total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth,
+                      digest=dict(digest) if digest else None, ai_on=settings.ai_enabled)
 
     # ---- watchlist actions ------------------------------------------------------------
 
     @app.post("/watchlist/add")
     def add_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), kind: str = Form("watch"), user=Depends(require_user)):
         check_csrf(request, csrf)
+        writable(request, user)
         sym = symbol.strip().upper()
         if sym not in set(store.instruments()["symbol"]):
-            raise HTTPException(status_code=404, detail=f"{sym} is not a DSE trading code")
+            raise HTTPException(status_code=404, detail=t(lang_of(request, user), "error.not_code", symbol=sym))
         appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, kind="target" if kind == "target" else "watch")
         return RedirectResponse(request.headers.get("referer") or "/", status_code=303)
 
     @app.post("/watchlist/remove")
     def remove_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
+        writable(request, user)
         appdb.remove_item(appdb.ensure_watchlist(user["id"]), symbol.strip().upper())
         return RedirectResponse("/", status_code=303)
 
     @app.post("/watchlist/kind")
     def set_kind(request: Request, symbol: str = Form(...), kind: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
+        writable(request, user)
         sym = symbol.strip().upper()
         wl = appdb.ensure_watchlist(user["id"])
         if sym not in {i["symbol"] for i in appdb.items(user["id"])}:
@@ -229,6 +306,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     @app.post("/accounts/rename")
     def rename_account(request: Request, account_id: int = Form(...), name: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
+        writable(request, user)
         if any(a["id"] == account_id for a in appdb.accounts(user["id"])) and name.strip():
             appdb.rename_account(account_id, name.strip())
         return RedirectResponse("/settings", status_code=303)
@@ -237,11 +315,12 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.get("/symbol/{symbol}", response_class=HTMLResponse)
     def symbol_page(request: Request, symbol: str, user=Depends(require_user)):
+        lang = lang_of(request, user)
         sym = symbol.upper()
         with store.connect(read_only=True) as con:
             inst = con.execute("SELECT * FROM instruments WHERE symbol = ?", [sym]).df()
             if inst.empty:
-                raise HTTPException(status_code=404, detail="unknown symbol")
+                raise HTTPException(status_code=404, detail="error.unknown_symbol")
             last = con.execute("SELECT date, close, ret_1, volume, vol_ratio_20 FROM features WHERE symbol = ? ORDER BY date DESC LIMIT 1", [sym]).df()
             stats = con.execute("SELECT * FROM symbol_stats WHERE symbol = ?", [sym]).df() \
                 if con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='symbol_stats'").fetchone()[0] else pd.DataFrame()
@@ -252,6 +331,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         stats_s = stats.iloc[0] if not stats.empty else None
         fund_s = fund.iloc[0] if not fund.empty else None
         ev = evidence.evidence(store, sym, stats_s, fund_s, inst_d.get("sector"), news, divs)
+        facts = [evidence.fact_text(f, lang) for f in ev["facts"]]
         item = next((i for i in appdb.items(user["id"]) if i["symbol"] == sym), None)
         held = [h for h in appdb.holdings(user["id"]) if h["symbol"] == sym]
         holding = None
@@ -259,15 +339,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             q = sum(h["quantity"] for h in held)
             holding = {"quantity": q, "avg_cost": sum(h["quantity"] * h["avg_cost"] for h in held) / q if q else None}
         return render(request, "symbol.html", active="", symbol=sym, inst=inst_d, last=_records(last)[0] if not last.empty else {},
-                      ev=ev, stats=_records(stats)[0] if not stats.empty else None, fund=_records(fund)[0] if not fund.empty else None,
+                      ev=ev, facts=facts, stats=_records(stats)[0] if not stats.empty else None, fund=_records(fund)[0] if not fund.empty else None,
                       news=_records(news), divs=_records(divs), item=item, holding=holding, rules=RULES, opt_in=OPT_IN,
                       price_chart=market.ohlc(store, sym, "1y"), rel_chart=market.relative_series(store, sym, 250),
-                      alerts=[a for a in appdb.alert_history(user["id"], 500) if a["symbol"] == sym][:20])
+                      alerts=_localized([a for a in appdb.alert_history(user["id"], 500) if a["symbol"] == sym][:20], lang))
 
     @app.post("/symbol/{symbol}/rules")
     async def save_rules(request: Request, symbol: str, user=Depends(require_user)):
         form = await request.form()
         check_csrf(request, str(form.get("csrf", "")))
+        writable(request, user)
         sym = symbol.upper()
         cfg: dict = {}
         for r in RULES:
@@ -319,21 +400,26 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.get("/alerts", response_class=HTMLResponse)
     def alerts_page(request: Request, user=Depends(require_user)):
-        return render(request, "alerts.html", active="alerts", alerts=appdb.alert_history(user["id"], 300))
+        lang = lang_of(request, user)
+        return render(request, "alerts.html", active="alerts", alerts=_localized(appdb.alert_history(user["id"], 300), lang),
+                      digests={d["session_date"]: dict(d) for d in appdb.digests(user["id"], 60)})
 
     @app.post("/alerts/check")
     def check_now(request: Request, csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
-        engine.run(store, appdb, record=True, user_ids=[user["id"]])
+        session, results = engine.run(store, appdb, record=True, user_ids=[user["id"]])
+        if results:
+            write_digest_if_due(user, session, results[0].alerts)
         return RedirectResponse("/", status_code=303)
 
     @app.get("/scorecard", response_class=HTMLResponse)
     def scorecard_page(request: Request, user=Depends(require_user)):
         from dse_alerts import scorecard as sc
 
+        lang = lang_of(request, user)
         df = sc.outcomes(store, appdb, user["id"])
         agg = sc.by_rule(df, sc.load_expectation(settings))
-        return render(request, "scorecard.html", active="scorecard", rows=_records(df.head(200)), by_rule=_records(agg),
+        return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=_records(agg),
                       pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df))
 
     @app.get("/rules", response_class=HTMLResponse)
@@ -354,23 +440,28 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.post("/settings")
     def save_settings(request: Request, csrf: str = Form(...), alert_to: str = Form(""), digest: str = Form(""),
-                      password: str = Form(""), telegram_chat_id: str = Form(""), user=Depends(require_user)):
+                      password: str = Form(""), telegram_chat_id: str = Form(""), lang: str = Form(""), user=Depends(require_user)):
         check_csrf(request, csrf)
+        writable(request, user)
         fields = {"alert_email": alert_to.strip() or user["email"], "digest_enabled": 1 if digest == "on" else 0,
-                  "telegram_chat_id": telegram_chat_id.strip() or None}
+                  "telegram_chat_id": telegram_chat_id.strip() or None, "lang": normalize(lang) if lang else dict(user).get("lang") or "en"}
         if password:
             if len(password) < 8:
                 return render(request, "settings.html", active="settings", runs=appdb.last_runs(10), market=market_status(),
-                              msg="Password too short.", accounts=appdb.accounts(user["id"]))
+                              msg="settings.password_short", accounts=appdb.accounts(user["id"]))
             fields["password_hash"] = hash_password(password)
         appdb.update_user(user["id"], **fields)
-        return RedirectResponse("/settings", status_code=303)
+        resp = RedirectResponse("/settings", status_code=303)
+        resp.set_cookie(LANG_COOKIE, fields["lang"], max_age=LANG_MAX_AGE, samesite="lax")
+        return resp
 
     @app.exception_handler(HTTPException)
     async def _redirects(request: Request, exc: HTTPException):
         if exc.status_code == 303:
             return RedirectResponse(exc.headers["Location"], status_code=303)
         request.state.user = current_user(request)
-        return render(request, "error.html", status_code=exc.status_code, status=exc.status_code, detail=exc.detail)
+        lang = lang_of(request, request.state.user)
+        detail = t(lang, exc.detail) if isinstance(exc.detail, str) else exc.detail   # catalog keys translate; plain text passes through
+        return render(request, "error.html", status_code=exc.status_code, status=exc.status_code, detail=detail)
 
     return app

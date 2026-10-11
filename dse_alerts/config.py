@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     app_secret_key: str = "change-me"
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    app_public_url: str = ""          # e.g. https://dse-alerts.fly.dev; used in emails and the hosting guide
+    app_default_lang: str = "en"      # en | bn; the language before a visitor or user picks one
+    # Demo mode for a public instance: a "Try the demo" button logs visitors into a shared,
+    # read-only account seeded with `dse demo seed`. Registration stays open.
+    app_demo: bool = False
 
     @property
     def market_db(self) -> Path:
@@ -64,6 +69,10 @@ class Settings(BaseSettings):
     @property
     def outbox_dir(self) -> Path:
         return self.dse_data_dir / "outbox"
+
+    @property
+    def base_url(self) -> str:
+        return self.app_public_url.rstrip("/") or f"http://{self.app_host}:{self.app_port}"
 
     @property
     def email_enabled(self) -> bool:

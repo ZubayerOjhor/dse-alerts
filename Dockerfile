@@ -6,10 +6,12 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY dse_alerts ./dse_alerts
 COPY calibration ./calibration
+COPY scripts ./scripts
 RUN pip install --no-cache-dir -e ".[web,ai]"
 
 VOLUME ["/data"]
 EXPOSE 8000
 
-# default: the web UI. The scheduler service in docker-compose.yml runs the daily chain.
+# default: the web UI. docker-compose.yml runs the daily chain as a second service
+# (scripts/scheduler.sh); a single-machine host runs both via `sh scripts/start.sh`.
 CMD ["dse", "web", "serve"]

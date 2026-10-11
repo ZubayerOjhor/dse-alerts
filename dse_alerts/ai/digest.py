@@ -43,6 +43,16 @@ Rules you must follow:
 - No headings, no bullet points, no emojis. Plain prose. British or Bangladeshi English spelling is fine.
 """
 
+LANG_NOTE = {
+    "bn": ("\nWrite the whole note in Bangla (বাংলা), in the plain register of a Bangladeshi business newspaper. "
+           "Keep trading codes (e.g. GP, BRACBANK), the word DSEX and all numbers in Latin script exactly as given."),
+}
+
+
+def system_prompt(lang: str = "en") -> str:
+    return SYSTEM + LANG_NOTE.get(lang or "en", "")
+
+
 DSE_CONTEXT = (
     "Context about the DSE that is safe to rely on: trading days are Sunday to Thursday; daily price moves are "
     "capped by slab-based circuit breakers (10% for shares under Tk 200, less for pricier shares); categories A, B "
@@ -72,7 +82,8 @@ def build_prompt(session: dt.date, alerts: list[Alert], symbols: list[str], evid
     return DSE_CONTEXT + "\n\nInput (JSON):\n" + json.dumps(payload, default=str, indent=1)
 
 
-def _via_anthropic(settings: Settings, prompt: str, api_key: str | None = None, model: str | None = None) -> str | None:
+def _via_anthropic(settings: Settings, prompt: str, api_key: str | None = None, model: str | None = None,
+                   lang: str = "en") -> str | None:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key or settings.anthropic_api_key, timeout=120.0)
@@ -82,7 +93,7 @@ def _via_anthropic(settings: Settings, prompt: str, api_key: str | None = None, 
         # server-side refusal fallbacks, recommended for these models; routes by refusal category
         kwargs = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
     resp = client.beta.messages.create(
-        model=model, max_tokens=2048, system=SYSTEM,
+        model=model, max_tokens=2048, system=system_prompt(lang),
         output_config={"effort": "medium"},
         messages=[{"role": "user", "content": prompt}],
         **kwargs,
@@ -95,7 +106,7 @@ def _via_anthropic(settings: Settings, prompt: str, api_key: str | None = None, 
 
 
 def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base_url: str | None = None,
-                           api_key: str | None = None, model: str | None = None) -> str | None:
+                           api_key: str | None = None, model: str | None = None, lang: str = "en") -> str | None:
     import httpx
 
     base_url = base_url or settings.openai_compat_base_url
@@ -110,9 +121,9 @@ def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base
         headers["X-Title"] = "dse-alerts"
     body = {
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
+        "messages": [{"role": "system", "content": system_prompt(lang)}, {"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 700,
+        "max_tokens": 900 if lang == "bn" else 700,   # Bangla tokenises longer
     }
     with httpx.Client(timeout=120.0, transport=transport) as c:
         r = c.post(url, headers=headers, json=body)
@@ -127,26 +138,32 @@ def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base
     return (text or "").strip() or None
 
 
-def write_digest(settings: Settings, session: dt.date, alerts: list[Alert], symbols: list[str],
-                 evidence: dict[str, dict] | None = None) -> str | None:
-    """Return the summary text, or None when AI is off, nothing fired, or the call failed."""
+def write_digest_detailed(settings: Settings, session: dt.date, alerts: list[Alert], symbols: list[str],
+                          evidence: dict[str, dict] | None = None, lang: str = "en") -> tuple[str | None, str | None]:
+    """Return ``(text, "provider:model")``; ``(None, None)`` when AI is off, nothing fired, or every provider failed."""
     if not settings.ai_enabled or not alerts:
-        return None
+        return None, None
     prompt = build_prompt(session, alerts, symbols, evidence)
     for p in settings.ai_chain():
         try:
             if p["kind"] == "anthropic":
-                text = _via_anthropic(settings, prompt, api_key=p["api_key"], model=p["model"])
+                text = _via_anthropic(settings, prompt, api_key=p["api_key"], model=p["model"], lang=lang)
             else:
-                text = _via_openai_compatible(settings, prompt, base_url=p["base_url"], api_key=p["api_key"], model=p["model"])
+                text = _via_openai_compatible(settings, prompt, base_url=p["base_url"], api_key=p["api_key"], model=p["model"], lang=lang)
         except Exception:
             log.exception("digest via %s failed", p["name"])
             continue
         if text:
             log.info("digest written by %s (%s)", p["name"], p["model"])
-            return text
+            return text, f"{p['name']}:{p['model']}"
         log.warning("digest via %s returned nothing; trying the next provider", p["name"])
-    return None
+    return None, None
+
+
+def write_digest(settings: Settings, session: dt.date, alerts: list[Alert], symbols: list[str],
+                 evidence: dict[str, dict] | None = None, lang: str = "en") -> str | None:
+    """Return the summary text, or None when AI is off, nothing fired, or the call failed."""
+    return write_digest_detailed(settings, session, alerts, symbols, evidence, lang)[0]
 
 
 def load_rule_evidence(settings: Settings) -> dict[str, dict]:

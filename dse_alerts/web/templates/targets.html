@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% set active = "targets" %}
-{% block title %}Targets · dse-alerts{% endblock %}
+{% block title %}{{ t('targets.title') }} · dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Targets</h1><div class="sub">Companies you are considering. Each row shows what is true about the stock right now, from its own history; click through for the full picture.</div></div>
+  <div><h1>{{ t('targets.title') }}</h1><div class="sub">{{ t('targets.sub') }}</div></div>
   <form method="post" action="/watchlist/add" class="row">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="target">
-    <input name="symbol" list="codes" placeholder="Add a target, e.g. SQURPHARMA" required autocomplete="off" style="width:240px"><datalist id="codes"></datalist>
-    <button class="primary">Add target</button>
+    <input name="symbol" list="codes" placeholder="{{ t('targets.add_placeholder') }}" required autocomplete="off" style="width:240px"><datalist id="codes"></datalist>
+    <button class="primary">{{ t('targets.add') }}</button>
   </form>
 </div>
 
 {% if rows %}
 <div class="card">
   <table class="compact">
-    <thead><tr><th>Symbol</th><th>Cat.</th><th class="num">Close</th><th class="num">20 s.</th><th class="num">60 s.</th><th class="num">250 s.</th><th>52-week range</th><th>Trend</th><th class="num">Vol ×20d</th><th class="num">P/E</th><th class="num">Sector P/E</th><th class="num">Div. yield</th><th>Last filing</th><th>60 sessions</th><th></th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th class="num">{{ t('common.close') }}</th><th class="num">{{ t('targets.s20') }}</th><th class="num">{{ t('targets.s60') }}</th><th class="num">{{ t('targets.s250') }}</th><th>{{ t('common.range_52w') }}</th><th>{{ t('common.trend') }}</th><th class="num">{{ t('common.vol20') }}</th><th class="num">{{ t('common.pe') }}</th><th class="num">{{ t('common.sector_pe') }}</th><th class="num">{{ t('common.div_yield') }}</th><th>{{ t('common.last_filing') }}</th><th>{{ t('common.sessions_60') }}</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
@@ -25,19 +25,19 @@
       <td class="num {{ 'up' if r.ret_60 and r.ret_60 > 0 else 'down' if r.ret_60 and r.ret_60 < 0 else '' }}">{{ r.ret_60 | pct }}</td>
       <td class="num {{ 'up' if r.ret_250 and r.ret_250 > 0 else 'down' if r.ret_250 and r.ret_250 < 0 else '' }}">{{ r.ret_250 | pct }}</td>
       <td style="min-width:120px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div><div class="muted small">{{ r.low_250 | num }} – {{ r.high_250 | num }}</div>{% endif %}</td>
-      <td><span class="badge {{ 'up' if r.trend == 'above both averages' else 'down' if r.trend == 'below both averages' else 'info' }}">{{ r.trend }}</span></td>
+      <td><span class="badge {{ 'up' if r.trend == 'above' else 'down' if r.trend == 'below' else 'info' }}">{{ t('trend.' ~ r.trend) }}</span></td>
       <td class="num">{{ r.vol_ratio_20 | num }}x</td>
       <td class="num">{{ r.pe | num }}</td><td class="num muted">{{ r.sector_pe | num }}</td><td class="num">{{ r.dividend_yield | num(2) }}%</td>
       <td class="small" style="min-width:150px">{% if r.last_news_date %}{{ r.last_news_date }}<div class="muted name" style="max-width:150px" title="{{ r.last_news_title or '' }}">{{ r.last_news_title or "" }}</div>{% endif %}</td>
       <td><svg class="spark {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ r.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
-      <td><form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link danger">untarget</button></form></td>
+      <td><form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link danger">{{ t('targets.untarget') }}</button></form></td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
 {% else %}
-<div class="card"><p class="muted">No targets yet. Add a trading code above, or mark a watched symbol as a target from its page.</p></div>
+<div class="card"><p class="muted">{{ t('targets.none') }}</p></div>
 {% endif %}
 <script>
 fetch('/instruments.json', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (list) {

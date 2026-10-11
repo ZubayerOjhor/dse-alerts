@@ -137,3 +137,76 @@ def test_rule_overrides_are_stored_as_the_engine_expects(env, tmp_path):
     assert rules["volume_spike"] is False              # a default-on rule left unticked is silenced
     assert rules["upper_circuit"] is False
     assert "pe_level" not in rules                     # opt-in rule left unticked is simply absent
+
+
+def test_language_toggle_cookie_and_saved_preference(env):
+    client, db = env
+    _register(client)
+    assert "Overview" in client.get("/").text and 'lang="en"' in client.get("/").text
+    r = client.get("/lang/bn", headers={"referer": "/portfolio"})
+    assert r.status_code == 303 and r.headers["location"] == "/portfolio" and client.cookies.get("dse_lang") == "bn"
+    page = client.get("/").text
+    assert 'lang="bn"' in page and "সারসংক্ষেপ" in page and "Overview" not in page
+    csrf = _csrf(client)
+    client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf})
+    sym = client.get("/symbol/GP").text
+    assert "এই মুহূর্তে যা সত্য" in sym and "GP-এর অ্যালার্ট নিয়ম" in sym and "বড় পতন" in sym
+    assert "নিয়ম" in client.get("/rules").text and "স্কোরকার্ড" in client.get("/scorecard").text
+    # the saved preference drives emails and is the fallback when the cookie is gone
+    client.post("/settings", data={"csrf": csrf, "alert_to": "", "telegram_chat_id": "", "lang": "bn"})
+    assert db.user("me@example.com")["lang"] == "bn"
+    client.cookies.delete("dse_lang")
+    assert 'lang="bn"' in client.get("/").text
+    client.get("/lang/en")
+    assert "Overview" in client.get("/").text
+
+
+def test_demo_mode_is_read_only(tmp_path, env):
+    client, db = env
+    from dse_alerts.appdb import DEMO_EMAIL
+    from dse_alerts.config import Settings
+
+    # default: no demo button, /demo is a 404
+    _register(client)
+    client.post("/logout")
+    assert "Try the demo" not in client.get("/login").text and client.post("/demo").status_code == 404
+
+    settings = Settings(dse_data_dir=tmp_path, app_secret_key="test-secret", app_demo=True)
+    import dse_alerts.web.app as webapp
+    from dse_alerts.data.store import MarketStore
+
+    app = webapp.create_app(settings, MarketStore(tmp_path / "m.duckdb"), db)
+    demo = TestClient(app, follow_redirects=False)
+    assert "Try the demo" not in demo.get("/login").text          # not seeded yet
+    uid = db.ensure_user(DEMO_EMAIL)
+    db.add_item(db.ensure_watchlist(uid), "GP", {}, kind="watch")
+    assert "Try the demo" in demo.get("/login").text
+    assert demo.post("/demo").status_code == 303
+    page = demo.get("/").text
+    assert "shared demo account" in page and "Grameenphone" in page
+    csrf = page.split('name="csrf" value="')[1].split('"')[0]
+    r = demo.post("/watchlist/add", data={"symbol": "ROBI", "csrf": csrf})
+    assert r.status_code == 403 and "read-only" in r.text
+    assert demo.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on"}).status_code == 403
+    assert demo.post("/settings", data={"csrf": csrf, "alert_to": "x@y.z", "lang": "bn"}).status_code == 403
+    assert demo.post("/watchlist/remove", data={"symbol": "GP", "csrf": csrf}).status_code == 403
+    assert [i["symbol"] for i in db.items(uid)] == ["GP"]          # nothing changed
+    assert demo.post("/alerts/check", data={"csrf": csrf}).status_code == 303   # reading is fine
+    # the demo address cannot be registered or logged into with a password
+    assert "already has an account" in demo.post("/register", data={"email": DEMO_EMAIL, "password": "longenough"}).text
+    assert "Wrong email" in demo.post("/login", data={"email": DEMO_EMAIL, "password": "anything"}).text
+
+
+def test_ai_summary_card(env):
+    client, db = env
+    _register(client)
+    page = client.get("/").text
+    assert "AI summary" in page and "GROQ_API_KEY" in page            # off: tells the user how to turn it on
+    uid = db.user("me@example.com")["id"]
+    # store a digest for the latest session and it shows on the overview
+    last = page.split("<strong>")[1].split("</strong>")[0]
+    db.save_digest(uid, last, "A quiet session for your list.", "groq:llama-3.3-70b-versatile", "en")
+    page = client.get("/").text
+    assert "A quiet session for your list." in page and "groq:llama-3.3-70b-versatile" in page
+    row = db.digest_for(uid, last)
+    assert row["lang"] == "en" and row["provider"].startswith("groq")

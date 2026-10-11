@@ -1,0 +1,44 @@
+# Fly.io: one small machine, one persistent volume, web UI + daily scheduler in one container.
+# See docs/hosting.md. Change `app` to a free name of your own before `fly launch`.
+app = "dse-alerts-demo"
+primary_region = "sin"      # Singapore: closest region to Bangladesh
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DSE_DATA_DIR = "/data"
+  APP_HOST = "0.0.0.0"
+  APP_PORT = "8000"
+  APP_DEMO = "1"            # shared read-only demo account; set to 0 for a private instance
+  APP_DEFAULT_LANG = "en"
+  TZ = "Asia/Dhaka"
+  # APP_PUBLIC_URL, APP_SECRET_KEY, SMTP_*, TELEGRAM_*, *_API_KEY go in `fly secrets set`, never here.
+
+[processes]
+  app = "sh scripts/start.sh"
+
+[[mounts]]
+  source = "dse_data"
+  destination = "/data"
+  initial_size = "3gb"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"   # the scheduler must stay up for the 16:30 run
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  # The feature build over the full history is the one memory-hungry step; swap keeps a 1 GB
+  # machine from being killed during it. Move to memory = "2gb" if the logs show OOM.
+  swap_size_mb = 1024

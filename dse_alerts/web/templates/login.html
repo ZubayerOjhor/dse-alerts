@@ -1,15 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Log in · dse-alerts{% endblock %}
+{% block title %}{{ t('login.title') }} · dse-alerts{% endblock %}
 {% block content %}
 <div class="card narrow">
-  <h1>Log in</h1>
-  <p class="muted small">Accounts live only in this installation's local database.</p>
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <h1>{{ t('login.title') }}</h1>
+  <p class="muted small">{{ t('login.note') }}</p>
+  {% if error %}<p class="error">{{ t(error) }}</p>{% endif %}
   <form method="post" action="/login">
-    <label>Email <input type="email" name="email" required autofocus></label>
-    <label>Password <input type="password" name="password" required></label>
-    <button class="primary">Log in</button>
+    <label>{{ t('login.email') }} <input type="email" name="email" required autofocus></label>
+    <label>{{ t('login.password') }} <input type="password" name="password" required></label>
+    <button class="primary">{{ t('login.submit') }}</button>
   </form>
-  <p class="muted small">No account yet? <a href="/register">Create one</a>.</p>
+  <p class="muted small">{{ t('login.no_account') }} <a href="/register">{{ t('login.create') }}</a>.</p>
+  {% if demo_available %}
+  <div class="demo-box">
+    <form method="post" action="/demo"><button class="wide">{{ t('demo.try') }}</button></form>
+    <p class="muted small" style="margin:8px 0 0">{{ t('demo.hint') }}</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

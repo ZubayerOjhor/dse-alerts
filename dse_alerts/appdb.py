@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS runs (
     detail TEXT
 );
 CREATE INDEX IF NOT EXISTS alerts_user_date ON alerts(user_id, session_date);
+CREATE TABLE IF NOT EXISTS digests (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    session_date TEXT NOT NULL,
+    text TEXT NOT NULL,
+    provider TEXT,                     -- groq:llama-3.3-70b-versatile, anthropic:claude-fable-5-1, ...
+    lang TEXT NOT NULL DEFAULT 'en',
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, session_date)
+);
 CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -92,7 +102,18 @@ CREATE TABLE IF NOT EXISTS holdings (
 MIGRATIONS = [
     ("users", "telegram_chat_id", "ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
     ("watchlist_items", "kind", "ALTER TABLE watchlist_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'watch'"),  # watch | target
+    ("users", "lang", "ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'"),   # en | bn
 ]
+
+# The shared read-only account used when APP_DEMO=1 (see `dse demo seed`).
+DEMO_EMAIL = "demo@dse-alerts.local"
+
+
+def is_demo(user) -> bool:
+    try:
+        return bool(user) and user["email"] == DEMO_EMAIL
+    except (KeyError, IndexError, TypeError):
+        return False
 
 
 def _now() -> str:
@@ -149,7 +170,7 @@ class AppDB:
             return con.execute("SELECT * FROM users ORDER BY id").fetchall()
 
     def update_user(self, user_id: int, **fields: Any) -> None:
-        allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id"}
+        allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id", "lang"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return
@@ -302,6 +323,31 @@ class AppDB:
                 "SELECT * FROM alerts WHERE user_id = ? ORDER BY session_date DESC, severity DESC, id DESC LIMIT ?",
                 (user_id, limit),
             ).fetchall()
+
+    # ---- AI digests -------------------------------------------------------------------
+
+    def save_digest(self, user_id: int, session: dt.date | str, text: str, provider: str | None, lang: str = "en") -> None:
+        s = session.isoformat() if isinstance(session, dt.date) else str(session)
+        with self.connect() as con:
+            con.execute(
+                """
+                INSERT INTO digests (user_id, session_date, text, provider, lang, created_at) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (user_id, session_date) DO UPDATE SET
+                    text = excluded.text, provider = excluded.provider, lang = excluded.lang, created_at = excluded.created_at
+                """,
+                (user_id, s, text, provider, lang, _now()),
+            )
+
+    def digest_for(self, user_id: int, session: dt.date | str | None) -> sqlite3.Row | None:
+        if session is None:
+            return None
+        s = session.isoformat() if isinstance(session, dt.date) else str(session)
+        with self.connect() as con:
+            return con.execute("SELECT * FROM digests WHERE user_id = ? AND session_date = ?", (user_id, s)).fetchone()
+
+    def digests(self, user_id: int, limit: int = 30) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return con.execute("SELECT * FROM digests WHERE user_id = ? ORDER BY session_date DESC LIMIT ?", (user_id, limit)).fetchall()
 
     # ---- runs -------------------------------------------------------------------------
 

@@ -1,40 +1,40 @@
 {% extends "base.html" %}
 {% set active = "portfolio" %}
-{% block title %}Portfolio · dse-alerts{% endblock %}
+{% block title %}{{ t('portfolio.title') }} · dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Portfolio</h1><div class="sub">Valued at the close of {{ as_of }}. Positions as imported; quantities and costs come from your statements.</div></div>
+  <div><h1>{{ t('portfolio.title') }}</h1><div class="sub">{% if as_of %}{{ t('portfolio.sub', date=as_of) }}{% endif %}</div></div>
 </div>
 
 {% if not total %}
-<div class="card"><p class="muted">No holdings yet. Put them in a CSV (account,symbol,quantity,avg_cost) and run <code>dse portfolio import data/holdings.csv --email you@example.com</code>.</p></div>
+<div class="card"><p class="muted">{{ t('portfolio.none') }} <code>dse portfolio import data/holdings.csv --email you@example.com</code>.</p></div>
 {% else %}
 <div class="tiles">
-  <div class="tile"><div class="label">Market value</div><div class="value">৳ {{ total.value | num(0) }}</div>
-    <div class="delta {{ 'up' if total.day_change > 0 else 'down' if total.day_change < 0 else 'flat' }}">{{ '+' if total.day_change >= 0 }}{{ total.day_change | num(0) }} ({{ total.day_change_pct | pct(2) }}) today</div></div>
-  <div class="tile"><div class="label">Cost</div><div class="value">৳ {{ total.cost | num(0) }}</div><div class="note">{{ total.positions }} positions, {{ total.symbols }} companies</div></div>
-  <div class="tile"><div class="label">Unrealised P&amp;L</div><div class="value {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 }}">{{ '+' if total.pnl >= 0 }}{{ total.pnl | num(0) }}</div>
+  <div class="tile"><div class="label">{{ t('portfolio.market_value') }}</div><div class="value">৳ {{ total.value | num(0) }}</div>
+    <div class="delta {{ 'up' if total.day_change > 0 else 'down' if total.day_change < 0 else 'flat' }}">{{ '+' if total.day_change >= 0 }}{{ total.day_change | num(0) }} ({{ total.day_change_pct | pct(2) }}) {{ t('common.today') }}</div></div>
+  <div class="tile"><div class="label">{{ t('common.cost') }}</div><div class="value">৳ {{ total.cost | num(0) }}</div><div class="note">{{ t('portfolio.positions_companies', positions=total.positions, symbols=total.symbols) }}</div></div>
+  <div class="tile"><div class="label">{{ t('dash.unrealised') }}</div><div class="value {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 }}">{{ '+' if total.pnl >= 0 }}{{ total.pnl | num(0) }}</div>
     <div class="delta {{ 'up' if total.pnl > 0 else 'down' if total.pnl < 0 else 'flat' }}">{{ total.pnl_pct | pct }}</div></div>
   {% if total.statement_value %}
-  <div class="tile"><div class="label">Since statement</div><div class="value {{ 'up' if total.value > total.statement_value else 'down' }}">{{ ((total.value / total.statement_value) - 1) | pct }}</div>
-    <div class="note">statement value ৳ {{ total.statement_value | num(0) }}</div></div>
+  <div class="tile"><div class="label">{{ t('portfolio.since_statement') }}</div><div class="value {{ 'up' if total.value > total.statement_value else 'down' }}">{{ ((total.value / total.statement_value) - 1) | pct }}</div>
+    <div class="note">{{ t('portfolio.statement_value') }} ৳ {{ total.statement_value | num(0) }}</div></div>
   {% endif %}
 </div>
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>Book value vs cost, last 250 sessions</h2>
-    <p class="muted small" style="margin-top:-6px">Today's quantities priced at each session's close: what this book was worth, not a performance record.</p>
+    <h2>{{ t('portfolio.history_title') }}</h2>
+    <p class="muted small" style="margin-top:-6px">{{ t('portfolio.history_note') }}</p>
     <div id="pv" class="chart" data-chart="lines" data-src="pv-data"></div>
     <script type="application/json" id="pv-data">{{ history_chart | tojson }}</script>
   </div>
   <div class="card">
-    <h2>By sector</h2>
+    <h2>{{ t('portfolio.by_sector') }}</h2>
     {% for s in sectors %}
     <div class="hbar"><span>{{ s.sector or "–" }}</span><div class="bar"><span style="width: {{ (100 * s.weight) | round(1) }}%"></span></div><span class="num {{ 'up' if s.pnl > 0 else 'down' if s.pnl < 0 }}">{{ (100 * s.weight) | round(1) }}% · {{ '+' if s.pnl >= 0 }}{{ s.pnl | num(0) }}</span></div>
     {% endfor %}
-    <h2 style="margin-top:16px">By account</h2>
-    <table class="compact"><thead><tr><th>Account</th><th class="num">Positions</th><th class="num">Cost</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Today</th></tr></thead><tbody>
+    <h2 style="margin-top:16px">{{ t('portfolio.by_account') }}</h2>
+    <table class="compact"><thead><tr><th>{{ t('common.account') }}</th><th class="num">{{ t('common.positions') }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.today') | capitalize }}</th></tr></thead><tbody>
     {% for a in accounts %}
     <tr><td>{{ a.account }}</td><td class="num">{{ a.positions }}</td><td class="num">{{ a.cost | num(0) }}</td><td class="num">{{ a.value | num(0) }}</td>
         <td class="num {{ 'up' if a.pnl > 0 else 'down' if a.pnl < 0 }}">{{ '+' if a.pnl >= 0 }}{{ a.pnl | num(0) }} ({{ a.pnl_pct | pct }})</td>
@@ -45,9 +45,9 @@
 </div>
 
 <div class="card">
-  <h2>Positions</h2>
+  <h2>{{ t('portfolio.positions') }}</h2>
   <table class="compact">
-    <thead><tr><th>Symbol</th><th>Cat.</th><th>Sector</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">Close</th><th class="num">Today</th><th class="num">Cost</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">P&amp;L %</th><th class="num">Weight</th><th>60 sessions</th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th>{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num">{{ t('common.avg_cost') }}</th><th class="num">{{ t('common.close') }}</th><th class="num">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.pnl_pct') }}</th><th class="num">{{ t('common.weight') }}</th><th>{{ t('common.sessions_60') }}</th></tr></thead>
     <tbody>
     {% for acc in positions_by_account %}
     <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>

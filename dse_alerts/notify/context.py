@@ -21,10 +21,14 @@ class DeliveryContext:
     watch_rows: list[dict] = field(default_factory=list)   # symbol, name, kind, close, ret_1, ret_20
     portfolio: dict | None = None                    # total dict + movers
     base_url: str = ""
+    lang: str = "en"                                 # en | bn; the user's saved preference
 
 
 def build(store: MarketStore, appdb: AppDB, user_id: int, session: dt.date, alerts: list[Alert],
-          digest: str | None = None, base_url: str = "") -> DeliveryContext:
+          digest: str | None = None, base_url: str = "", lang: str | None = None) -> DeliveryContext:
+    if lang is None:
+        u = appdb.user_by_id(user_id)
+        lang = (dict(u).get("lang") if u else None) or "en"
     items = appdb.items(user_id)
     kinds = {i["symbol"]: i["kind"] for i in items}
     symbols = sorted(kinds)
@@ -49,4 +53,4 @@ def build(store: MarketStore, appdb: AppDB, user_id: int, session: dt.date, aler
     except Exception:  # noqa: BLE001 - a valuation problem must not block the alerts
         pf = None
     return DeliveryContext(session=session, alerts=alerts, symbols=symbols, digest=digest,
-                           index=market.index_last(store), watch_rows=watch_rows, portfolio=pf, base_url=base_url)
+                           index=market.index_last(store), watch_rows=watch_rows, portfolio=pf, base_url=base_url, lang=lang)

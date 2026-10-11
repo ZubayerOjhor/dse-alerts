@@ -68,12 +68,38 @@ def index_return(store: MarketStore, start: dt.date, end: dt.date) -> float | No
     return None
 
 
+def _trend(close, sma20, sma50) -> str:
+    """One of above | below | between | na; the UI translates it (``trend.<key>``)."""
+    if close is None or sma20 is None or sma50 is None:
+        return "na"
+    if close > sma20 and close > sma50:
+        return "above"
+    if close < sma20 and close < sma50:
+        return "below"
+    return "between"
+
+
+def fact_text(fact: dict, lang: str) -> dict:
+    """Resolve one fact's catalog keys into strings for ``lang`` (used by the symbol page)."""
+    from dse_alerts.i18n import t
+
+    args = dict(fact.get("args") or {})
+    for k in ("where", "rel"):
+        if k in args and isinstance(args[k], str) and args[k].startswith("fact."):
+            args[k] = t(lang, args[k], **(args.pop(k + "_args", None) or {}))
+    note = t(lang, fact["note"], **args) if fact.get("note") else fact.get("text", "")
+    if fact.get("note2"):
+        note += " " + t(lang, fact["note2"], **(fact.get("args2") or {}))
+    value = t(lang, fact["value_key"], **(fact.get("value_args") or {})) if fact.get("value_key") else fact.get("value")
+    return {"label": t(lang, fact["label"]), "value": value, "tone": fact.get("tone", ""), "note": note}
+
+
 def evidence(store: MarketStore, symbol: str, stats: pd.Series | None, fund: pd.Series | None,
              sector: str | None, news: pd.DataFrame, dividends: pd.DataFrame) -> dict:
     hist = symbol_snapshot(store, symbol)
     if hist.empty:
         return {"facts": [], "ret_20": None, "ret_60": None, "ret_250": None, "dsex_20": None, "range_pos": None,
-                "high_250": None, "low_250": None, "vol_ratio_p95": None, "sector_pe": None, "trend": "–"}
+                "high_250": None, "low_250": None, "vol_ratio_p95": None, "sector_pe": None, "trend": "na"}
     last = hist.iloc[-1]
     close = _f(last["close"])
 
@@ -95,41 +121,47 @@ def evidence(store: MarketStore, symbol: str, stats: pd.Series | None, fund: pd.
     pe = _f(fund["pe"]) if fund is not None and "pe" in fund else None
     sector_pe = sector_pe_median(store, sector)
 
-    if sma20 is not None and sma50 is not None:
-        trend = "above both averages" if close > sma20 and close > sma50 else "below both averages" if close < sma20 and close < sma50 else "between the averages"
-    else:
-        trend = "not enough history"
+    trend = _trend(close, sma20, sma50)
 
+    # Each fact is language-neutral: ``label`` and ``note`` are catalog keys (see i18n/en.json),
+    # ``args`` fills the note's placeholders, and ``value`` is either a formatted number or,
+    # when ``value_key`` is set, a catalog key. The templates translate at render time.
     facts = []
-    facts.append({"label": "Trend", "value": trend, "tone": "up" if trend.startswith("above") else "down" if trend.startswith("below") else "",
-                  "note": f"Close {_num(close)}; 20-session average {_num(sma20)}, 50-session {_num(sma50)}."})
+    facts.append({"id": "trend", "label": "fact.trend", "value": None, "value_key": "trend." + trend,
+                  "tone": "up" if trend == "above" else "down" if trend == "below" else "",
+                  "note": "fact.trend_note", "args": {"close": _num(close), "sma20": _num(sma20), "sma50": _num(sma50)}})
     p05, p95 = st("ret20_p05"), st("ret20_p95")
     if r20 is not None and p05 is not None and p95 is not None:
-        where = "beyond its 95th percentile" if r20 > p95 else "beyond its 5th percentile" if r20 < p05 else "inside its usual range"
-        facts.append({"label": "20-session move", "value": _pct(r20), "tone": "up" if r20 > 0 else "down" if r20 < 0 else "",
-                      "note": f"{where} ({_pct(p05)} to {_pct(p95)}). DSEX {_pct(dsex_20)} over the same sessions."})
+        where = "fact.where_above" if r20 > p95 else "fact.where_below" if r20 < p05 else "fact.where_inside"
+        facts.append({"id": "ret20", "label": "fact.ret20", "value": _pct(r20), "tone": "up" if r20 > 0 else "down" if r20 < 0 else "",
+                      "note": "fact.ret20_note", "args": {"where": where, "p05": _pct(p05), "p95": _pct(p95), "dsex": _pct(dsex_20)}})
     if z is not None:
-        facts.append({"label": "Today's move", "value": _pct(ret1, 2), "tone": "up" if ret1 > 0 else "down" if ret1 < 0 else "",
-                      "note": f"{abs(z):.1f}x this stock's typical daily move (sd {_pct(sd, 2)})."})
+        facts.append({"id": "today", "label": "fact.today", "value": _pct(ret1, 2), "tone": "up" if ret1 > 0 else "down" if ret1 < 0 else "",
+                      "note": "fact.today_note", "args": {"z": f"{abs(z):.1f}", "sd": _pct(sd, 2)}})
     vr = _f(last["vol_ratio_20"])
     if vr is not None:
-        facts.append({"label": "Volume", "value": f"{vr:.1f}x", "tone": "up" if p95v and vr >= p95v else "",
-                      "note": f"vs its 20-session average; {_num(p95v)}x is this stock's 95th percentile." if p95v else "vs its 20-session average."})
+        facts.append({"id": "volume", "label": "fact.volume", "value": f"{vr:.1f}x", "tone": "up" if p95v and vr >= p95v else "",
+                      "note": "fact.volume_note_p95" if p95v else "fact.volume_note", "args": {"p95": _num(p95v)}})
     if range_pos is not None:
-        facts.append({"label": "Position in 52-week range", "value": f"{100 * range_pos:.0f}%", "tone": "",
-                      "note": f"Low {_num(lo)}, high {_num(hi)}; 0% is the low, 100% the high."})
-    facts.append({"label": "Circuit hits, last 60 sessions", "value": f"{ups} up · {dns} down", "tone": "down" if dns >= 3 else "up" if ups >= 3 else "",
-                  "note": f"Zero-volume sessions in that window: {zero60}." + (f" This stock averages {_num(st('upper_hits_per_250'))} upper / {_num(st('lower_hits_per_250'))} lower hits a year." if st("upper_hits_per_250") is not None else "")})
+        facts.append({"id": "range", "label": "fact.range", "value": f"{100 * range_pos:.0f}%", "tone": "",
+                      "note": "fact.range_note", "args": {"low": _num(lo), "high": _num(hi)}})
+    facts.append({"id": "circuit", "label": "fact.circuit", "value": None, "value_key": "fact.circuit_value", "value_args": {"ups": ups, "dns": dns},
+                  "tone": "down" if dns >= 3 else "up" if ups >= 3 else "",
+                  "note": "fact.circuit_note", "args": {"zero": zero60},
+                  "note2": "fact.circuit_note_avg" if st("upper_hits_per_250") is not None else None,
+                  "args2": {"up": _num(st("upper_hits_per_250")), "down": _num(st("lower_hits_per_250"))}})
     if pe is not None:
-        rel = f"{'below' if sector_pe and pe < sector_pe else 'above' if sector_pe and pe > sector_pe else 'at'} the sector median of {_num(sector_pe)}" if sector_pe else "no sector median available"
-        facts.append({"label": "Valuation", "value": f"P/E {pe:.1f}", "tone": "", "note": f"{rel}. Dividend yield {_num(_f(fund.get('dividend_yield')), 2)}%, price/NAV {_num(_f(fund.get('price')) / _f(fund.get('nav')), 2) if _f(fund.get('nav')) else '–'}."})
+        rel = ("fact.rel_below" if sector_pe and pe < sector_pe else "fact.rel_above" if sector_pe and pe > sector_pe else "fact.rel_at") if sector_pe else "fact.rel_none"
+        pnav = _num(_f(fund.get("price")) / _f(fund.get("nav")), 2) if _f(fund.get("nav")) else "–"
+        facts.append({"id": "valuation", "label": "fact.valuation", "value": f"P/E {pe:.1f}", "tone": "",
+                      "note": "fact.valuation_note", "args": {"rel": rel, "rel_args": {"pe": _num(sector_pe)}, "dy": _num(_f(fund.get("dividend_yield")), 2), "pnav": pnav}})
     if news is not None and not news.empty:
         n = news.iloc[0]
-        facts.append({"label": "Latest filing", "value": _date(n["date"]), "tone": "", "note": str(n["title"])[:120]})
+        facts.append({"id": "filing", "label": "fact.filing", "value": _date(n["date"]), "tone": "", "note": None, "text": str(n["title"])[:120]})
     if dividends is not None and not dividends.empty:
         d = dividends.iloc[0]
-        facts.append({"label": "Latest dividend declaration", "value": str(d["dividend"])[:40], "tone": "",
-                      "note": f"Declared {_date(d.get('declared_on'))}; record date {_date(d.get('record_date'))}, AGM {_date(d.get('agm_date'))}."})
+        facts.append({"id": "dividend", "label": "fact.dividend", "value": str(d["dividend"])[:40], "tone": "",
+                      "note": "fact.dividend_note", "args": {"declared": _date(d.get("declared_on")), "record": _date(d.get("record_date")), "agm": _date(d.get("agm_date"))}})
 
     return {"facts": facts, "ret_20": r20, "ret_60": r60, "ret_250": r250, "dsex_20": dsex_20, "range_pos": range_pos,
             "high_250": hi, "low_250": lo, "vol_ratio_p95": p95v, "sector_pe": sector_pe, "trend": trend, "pe": pe}
@@ -166,7 +198,7 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
     sector_cache: dict[str, float | None] = {}
     for r in base.itertuples():
         close, sma20, sma50, hi, lo = _f(r.close), _f(r.sma_20), _f(r.sma_50), _f(r.high_250), _f(r.low_250)
-        trend = ("above both averages" if close > sma20 and close > sma50 else "below both averages" if close < sma20 and close < sma50 else "between the averages") if sma20 and sma50 else "–"
+        trend = _trend(close, sma20, sma50)
         if r.sector not in sector_cache:
             sector_cache[r.sector] = sector_pe_median(store, r.sector)
         out.append({

@@ -1,25 +1,28 @@
 {% extends "base.html" %}
 {% set active = "alerts" %}
-{% block title %}Alerts · dse-alerts{% endblock %}
+{% block title %}{{ t('alerts.title') }} · dse-alerts{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Alerts</h1><div class="sub">Everything that fired on your symbols, newest first. The same list goes out by email and Telegram.</div></div></div>
+<div class="page-head"><div><h1>{{ t('alerts.title') }}</h1><div class="sub">{{ t('alerts.sub') }}</div></div></div>
 <div class="card">
   {% if alerts %}
   <table class="compact">
-    <thead><tr><th>Session</th><th></th><th>Symbol</th><th>What happened</th><th>Rule</th><th>Delivered</th></tr></thead>
+    <thead><tr><th>{{ t('common.session') }}</th><th></th><th>{{ t('common.symbol') }}</th><th>{{ t('common.what_happened') }}</th><th>{{ t('common.rule') }}</th><th>{{ t('common.delivered') }}</th></tr></thead>
     <tbody>
     {% for a in alerts %}
+    {% if loop.first or a.session_date != loop.previtem.session_date %}{% set d = digests.get(a.session_date) %}{% if d %}
+    <tr class="digest-row"><td class="muted">{{ a.session_date }}</td><td><span class="ai-mark" aria-hidden="true">✦</span></td><td colspan="4"><div class="digest small">{{ d.text }}</div><div class="muted small">{{ t('ai.by', provider=d.provider or 'AI') }}</div></td></tr>
+    {% endif %}{% endif %}
     <tr>
       <td class="muted">{{ a.session_date }}</td>
       <td><span class="dot {{ a.severity }}"></span></td>
       <td><a href="/symbol/{{ a.symbol }}"><strong>{{ a.symbol }}</strong></a></td>
       <td>{{ a.headline }}<div class="detail">{{ a.detail }}</div></td>
-      <td class="muted"><code>{{ a.rule_id }}</code></td>
-      <td class="muted">{{ "yes" if a.delivered_at else "" }}</td>
+      <td class="muted"><span title="{{ a.rule_id }}">{{ t('rule.' ~ a.rule_id ~ '.name') }}</span></td>
+      <td class="muted">{{ t('common.yes') if a.delivered_at else "" }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="muted">No alerts recorded yet. They appear here after each daily run, or after "Check alerts now" on the overview.</p>{% endif %}
+  {% else %}<p class="muted">{{ t('alerts.none') }}</p>{% endif %}
 </div>
 {% endblock %}

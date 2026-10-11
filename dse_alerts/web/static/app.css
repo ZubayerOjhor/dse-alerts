@@ -156,3 +156,24 @@ form.row input, form.row select { width: auto; } form.row { margin: 0; }
 .rules .params label { margin: 0; width: 170px; } .rules .params input { padding: 5px 8px; }
 .news { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .news .title { font-weight: 600; }
+
+/* ---- language -------------------------------------------------------------------------
+   Bangla uses fonts that ship with the OS (Nirmala UI on Windows, Noto Sans Bengali on
+   Android/ChromeOS/Linux, common Bangladeshi installs); nothing is fetched from the web. */
+:root[lang="bn"], :root[lang="bn"][data-theme] { --font: "Noto Sans Bengali", "Nirmala UI", "Hind Siliguri", "SolaimanLipi", "Kalpurush", "Vrinda", system-ui, "Segoe UI", sans-serif; }
+:root[lang="bn"] body { line-height: 1.65; }
+:root[lang="bn"] .num, :root[lang="bn"] code { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.lang { display: flex; background: var(--surface-2); border-radius: 8px; padding: 3px; }
+.lang a { padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); text-decoration: none; line-height: 18px; }
+.lang a.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+
+/* ---- demo mode and the AI summary -------------------------------------------------- */
+.banner.demo { background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 8px 22px; font-size: 13px; color: var(--ink-2); text-align: center; }
+.demo-box { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+button.wide { width: 100%; }
+a.button { display: inline-block; padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 7px; }
+.card.ai { border-left: 4px solid var(--accent); }
+.ai-mark { color: var(--accent); }
+.digest { white-space: pre-wrap; line-height: 1.6; font-size: 14.5px; }
+.digest.small { font-size: 13px; }
+.digest-row td { background: var(--surface-2); }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,30 +13,34 @@
   <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 9-10" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>dse-alerts</a>
   {% if user %}
   <nav class="main">
-    <a href="/" class="{{ 'active' if active == 'dashboard' }}">Overview</a>
-    <a href="/portfolio" class="{{ 'active' if active == 'portfolio' }}">Portfolio</a>
-    <a href="/targets" class="{{ 'active' if active == 'targets' }}">Targets</a>
-    <a href="/alerts" class="{{ 'active' if active == 'alerts' }}">Alerts</a>
-    <a href="/scorecard" class="{{ 'active' if active == 'scorecard' }}">Scorecard</a>
-    <a href="/rules" class="{{ 'active' if active == 'rules' }}">Rules</a>
-    <a href="/settings" class="{{ 'active' if active == 'settings' }}">Settings</a>
+    <a href="/" class="{{ 'active' if active == 'dashboard' }}">{{ t('nav.overview') }}</a>
+    <a href="/portfolio" class="{{ 'active' if active == 'portfolio' }}">{{ t('nav.portfolio') }}</a>
+    <a href="/targets" class="{{ 'active' if active == 'targets' }}">{{ t('nav.targets') }}</a>
+    <a href="/alerts" class="{{ 'active' if active == 'alerts' }}">{{ t('nav.alerts') }}</a>
+    <a href="/scorecard" class="{{ 'active' if active == 'scorecard' }}">{{ t('nav.scorecard') }}</a>
+    <a href="/rules" class="{{ 'active' if active == 'rules' }}">{{ t('nav.rules') }}</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' }}">{{ t('nav.settings') }}</a>
   </nav>
   {% else %}<span style="flex:1"></span>{% endif %}
   <div class="right">
-    <div class="themes" title="Theme">
-      <button type="button" data-theme-pick="light" aria-label="Light theme"></button>
-      <button type="button" data-theme-pick="dark" aria-label="Dark theme"></button>
-      <button type="button" data-theme-pick="midnight" aria-label="Midnight theme"></button>
-      <button type="button" data-theme-pick="terminal" aria-label="Terminal theme"></button>
+    <div class="lang" title="{{ t('lang.switch') }}" aria-label="{{ t('lang.switch') }}">
+      <a href="/lang/en" class="{{ 'active' if lang == 'en' }}" lang="en">EN</a><a href="/lang/bn" class="{{ 'active' if lang == 'bn' }}" lang="bn">বাং</a>
     </div>
-    {% if user %}<form method="post" action="/logout" class="inline"><button class="link">Log out</button></form>{% endif %}
+    <div class="themes" title="{{ t('theme.title') }}">
+      <button type="button" data-theme-pick="light" aria-label="{{ t('theme.light') }}"></button>
+      <button type="button" data-theme-pick="dark" aria-label="{{ t('theme.dark') }}"></button>
+      <button type="button" data-theme-pick="midnight" aria-label="{{ t('theme.midnight') }}"></button>
+      <button type="button" data-theme-pick="terminal" aria-label="{{ t('theme.terminal') }}"></button>
+    </div>
+    {% if user %}<form method="post" action="/logout" class="inline"><button class="link">{{ t('nav.logout') }}</button></form>{% endif %}
   </div>
 </header>
+{% if demo %}<div class="banner demo">{{ t('demo.banner') }} <a href="/register">{{ t('demo.banner_link') }}</a>.</div>{% endif %}
 <main>
 {% block content %}{% endblock %}
 </main>
 <footer>
-  <p>Automated observations about prices, volumes and filings on the Dhaka Stock Exchange. Not investment advice; no buy or sell recommendation is implied. Runs entirely on this machine; the browser talks only to this server.</p>
+  <p>{{ t('footer.notice') }}</p>
 </footer>
 <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
 <script src="/static/app.js"></script>

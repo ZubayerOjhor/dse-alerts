@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Error · dse-alerts{% endblock %}
+{% block title %}{{ status }} · dse-alerts{% endblock %}
 {% block content %}
 <div class="card narrow">
   <h1>{{ status }}</h1>
   <p>{{ detail }}</p>
-  <p><a href="/">Back to the overview</a></p>
+  {% if status == 403 and demo %}<p><a href="/register" class="button">{{ t('demo.banner_link') }}</a></p>{% endif %}
+  <p><a href="/">{{ t('error.back') }}</a></p>
 </div>
 {% endblock %}

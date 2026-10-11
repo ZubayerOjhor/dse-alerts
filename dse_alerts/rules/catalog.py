@@ -149,8 +149,8 @@ def _vs_index(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
 def _psi_news(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     if ctx.news.empty:
         return None
-    since = ctx.as_of - dt.timedelta(days=int(p.get("lookback_days", 2)))
-    recent = ctx.news[(pd.to_datetime(ctx.news["date"]).dt.date >= since)]
+    since = pd.Timestamp(ctx.as_of - dt.timedelta(days=int(p.get("lookback_days", 2))))
+    recent = ctx.news[pd.to_datetime(ctx.news["date"], errors="coerce") >= since]
     if recent.empty:
         return None
     first = recent.iloc[0]
@@ -168,8 +168,10 @@ def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     if ctx.dividends.empty:
         return None
     within = int(p.get("within_days", 3))
-    rd = pd.to_datetime(ctx.dividends["record_date"], errors="coerce").dt.date
-    soon = ctx.dividends[(rd >= ctx.as_of) & (rd <= ctx.as_of + dt.timedelta(days=within))]
+    # compare as Timestamps: the column may arrive as datetime64 or as text, and pandas refuses
+    # to compare datetime64 with a plain date
+    rd = pd.to_datetime(ctx.dividends["record_date"], errors="coerce")
+    soon = ctx.dividends[(rd >= pd.Timestamp(ctx.as_of)) & (rd <= pd.Timestamp(ctx.as_of + dt.timedelta(days=within)))]
     if soon.empty:
         return None
     d = soon.iloc[0]
