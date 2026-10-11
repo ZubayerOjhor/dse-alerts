@@ -38,7 +38,7 @@ fi
 sudo netfilter-persistent save >/dev/null 2>&1 || true
 
 echo "== Code"
-if [ ! -d "$DIR/.git" ]; then git clone "$REPO" "$DIR"; else git -C "$DIR" pull --ff-only; fi
+if [ ! -d "$DIR/.git" ]; then git clone "$REPO" "$DIR"; else git -C "$DIR" pull --ff-only || echo "   (could not pull; using the checkout as it is)"; fi
 cd "$DIR"
 
 echo "== .env"
