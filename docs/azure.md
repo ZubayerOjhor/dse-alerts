@@ -78,8 +78,6 @@ On the machine, one command does the rest (Docker, swap, firewall, clone, `.env`
 curl -fsSL https://raw.githubusercontent.com/ZubayerOjhor/dse-alerts/main/scripts/vm-setup.sh | bash
 ```
 
-> The repository must be public for that URL to work. While it is private, do this instead:
-> `sudo apt-get install -y gh git && gh auth login && gh repo clone ZubayerOjhor/dse-alerts && bash dse-alerts/scripts/vm-setup.sh`
 
 The script prints the address it chose, `https://<ip-with-dashes>.sslip.io`. sslip.io is a
 public DNS service that maps that name to your IP, so HTTPS works without a domain. The
