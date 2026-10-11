@@ -1,0 +1,11 @@
+account,symbol,quantity,avg_cost,statement_price,statement_date,margin,note
+Demo BO 1,GP,200,299.00,242.00,2026-10-08,non-marginable,sample row - not real holdings
+Demo BO 1,BRACBANK,1000,69.70,66.40,2026-10-08,marginable,
+Demo BO 1,SQURPHARMA,300,218.20,217.10,2026-10-08,marginable,
+Demo BO 1,BXPHARMA,500,117.60,144.60,2026-10-08,marginable,
+Demo BO 1,CITYBANK,1500,25.20,29.90,2026-10-08,marginable,
+Demo BO 2,RENATA,50,482.40,449.90,2026-10-08,marginable,
+Demo BO 2,BATBC,100,279.40,222.60,2026-10-08,marginable,
+Demo BO 2,OLYMPIC,400,156.00,143.10,2026-10-08,marginable,
+Demo BO 2,WALTONHIL,60,473.10,331.10,2026-10-08,non-marginable,
+Demo BO 2,PUBALIBANK,1200,28.50,40.20,2026-10-08,marginable,
