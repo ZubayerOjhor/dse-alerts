@@ -18,6 +18,33 @@ demo** button, open registration, daily alerts, and HTTPS, for US$0 a month.
    resources, and the account stays in "Free Tier" mode unless you explicitly upgrade.
 3. Wait for the "your account is ready" email, then sign in.
 
+### If the card is refused
+
+Oracle's signup is the strictest of any cloud host and rejects many perfectly good cards.
+The check is a US$1 authorisation without the bank's OTP step, so a card that works in
+shops and on Amazon can still fail here. In rough order of how often each one helps:
+
+1. **Stop after two or three attempts.** Every failure raises an internal risk score on the
+   email, phone and card; after that nothing passes for a day or two. Wait 24-48 hours and
+   use a fresh email address and a different browser profile on the next try.
+2. **No VPN, no ad-blocker, no autofill.** Plain Chrome or Edge, normal window, extensions off.
+3. **Type the details exactly as the bank has them:** the cardholder name as printed, the
+   billing address the bank holds (Latin spelling, with postcode), and a phone number in the
+   same country as the card. Country of residence must equal the card's country.
+4. **Ask the bank** to enable "international / e-commerce transactions" on the card and to
+   lift any per-transaction block on USD card-not-present payments. Dual-currency cards
+   from Bangladeshi banks often ship with this off.
+5. **Credit beats debit, and no prepaid or virtual cards.** Oracle refuses prepaid, virtual
+   and single-use numbers outright.
+6. **Pick "Pay As You Go" instead of "Free Tier"** on the plan page. Always Free resources
+   are included either way, and the verification sometimes behaves differently.
+7. **Oracle chat support** can finish the signup by hand when the automated check keeps
+   failing; it is the slowest route but it does work.
+
+If none of that works in an evening, use a paid host instead of losing more time: Fly.io or
+any VPS takes the card through a normal 3-D Secure payment, and the setup is already
+scripted ([docs/hosting.md](hosting.md)).
+
 ## 2. Open ports 80 and 443 in the network (3 minutes)
 
 Oracle blocks everything except SSH by default, in two places. This is the network one.
