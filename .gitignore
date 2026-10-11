@@ -23,3 +23,6 @@ data/outbox/
 logs/
 .DS_Store
 Thumbs.db
+data/web.log
+data/web.err
+data/*.private.*
