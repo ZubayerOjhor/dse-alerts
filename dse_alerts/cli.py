@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import sys
 from pathlib import Path
 
 import typer
@@ -14,6 +15,14 @@ from dse_alerts.config import get_settings
 from dse_alerts.data import ingest
 from dse_alerts.data.store import MarketStore
 from dse_alerts.notify.context import build as build_context
+
+# Windows consoles default to a legacy code page; Bangla text and the AI note would crash print().
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):  # closed or non-file stream
+            pass
 
 app = typer.Typer(no_args_is_help=True, help="Self-hosted alerts for the Dhaka Stock Exchange.")
 data_app = typer.Typer(no_args_is_help=True, help="Market data: bootstrap, refresh, validate, status.")
