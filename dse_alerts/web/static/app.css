@@ -177,3 +177,36 @@ a.button { display: inline-block; padding: 7px 12px; border: 1px solid var(--lin
 .digest { white-space: pre-wrap; line-height: 1.6; font-size: 14.5px; }
 .digest.small { font-size: 13px; }
 .digest-row td { background: var(--surface-2); }
+
+/* ---- market today: sector board, movers, record dates ------------------------------ */
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.board .cell { padding: 8px 9px; border-radius: 7px; background: var(--surface-2); color: var(--ink); min-height: 58px; display: flex; flex-direction: column; justify-content: space-between; }
+.board .cell .sector { font-size: 12px; font-weight: 600; line-height: 1.25; }
+.board .cell .move { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.board .cell .n { font-size: 11px; opacity: .75; }
+.board .cell.up1 { background: color-mix(in srgb, var(--up) 14%, var(--surface-2)); } .board .cell.up2 { background: color-mix(in srgb, var(--up) 28%, var(--surface-2)); } .board .cell.up3 { background: color-mix(in srgb, var(--up) 45%, var(--surface-2)); }
+.board .cell.dn1 { background: color-mix(in srgb, var(--down) 14%, var(--surface-2)); } .board .cell.dn2 { background: color-mix(in srgb, var(--down) 28%, var(--surface-2)); } .board .cell.dn3 { background: color-mix(in srgb, var(--down) 45%, var(--surface-2)); }
+.movers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 700px) { .movers { grid-template-columns: 1fr; } }
+.movers h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 6px; }
+.help { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+.help a { font-weight: 500; }
+th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ai-tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); vertical-align: middle; }
+
+/* ---- stock finder ------------------------------------------------------------------ */
+.presets { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.presets a { padding: 6px 12px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+.presets a:hover { background: var(--surface-2); text-decoration: none; } .presets a.active { border-color: var(--accent); color: var(--accent); }
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.filters label { margin: 0; } .filters input, .filters select { width: 100%; }
+.filters .actions { display: flex; gap: 8px; }
+
+/* ---- learn page -------------------------------------------------------------------- */
+.learn { max-width: 820px; }
+.learn h2 { font-size: 17px; text-transform: none; letter-spacing: 0; color: var(--ink); margin: 26px 0 8px; }
+.learn h2:first-child { margin-top: 0; }
+.learn p { margin: 0 0 10px; line-height: 1.65; }
+.learn dl { margin: 0; } .learn dt { font-weight: 650; margin-top: 10px; } .learn dd { margin: 2px 0 0; color: var(--ink-2); line-height: 1.6; }
+.learn .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; margin-bottom: 8px; }
+.meta > span:not(:first-child)::before { content: "/"; color: var(--muted); margin: 0 7px; }

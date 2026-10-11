@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% set active = "find" %}
+{% block title %}{{ t('find.title') }} - dse-alerts{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ t('find.title') }}</h1><div class="sub">{{ t('find.sub') }}</div></div></div>
+
+<div class="card">
+  <div class="presets">
+    {% for id, label in presets %}
+    <a href="/find?preset={{ id }}" class="{{ 'active' if preset == id }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <form method="get" action="/find" class="filters">
+    <label>{{ t('find.sector') }}
+      <select name="sector"><option value="">{{ t('find.any') }}</option>{% for s in sectors %}<option value="{{ s }}" {% if q.sector == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    <label>{{ t('find.category') }}
+      <select name="category"><option value="">{{ t('find.any') }}</option>{% for c in ['A', 'B', 'N', 'Z'] %}<option value="{{ c }}" {% if q.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    <label>{{ t('find.pe_min') }} <input type="number" step="0.1" name="pe_min" value="{{ q.pe_min if q.pe_min is not none else '' }}"></label>
+    <label>{{ t('find.pe_max') }} <input type="number" step="0.1" name="pe_max" value="{{ q.pe_max if q.pe_max is not none else '' }}"></label>
+    <label>{{ t('find.ret20_min') }} <input type="number" step="1" name="ret20_min" value="{{ q.ret20_min if q.ret20_min is not none else '' }}"></label>
+    <label>{{ t('find.ret20_max') }} <input type="number" step="1" name="ret20_max" value="{{ q.ret20_max if q.ret20_max is not none else '' }}"></label>
+    <label>{{ t('find.vol_min') }} <input type="number" step="0.5" name="vol_min" value="{{ q.vol_min if q.vol_min is not none else '' }}"></label>
+    <label>{{ t('find.price_max') }} <input type="number" step="1" name="price_max" value="{{ q.price_max if q.price_max is not none else '' }}"></label>
+    <label>{{ t('find.near') }}
+      <select name="near"><option value="">{{ t('find.any') }}</option><option value="low" {% if q.near == 'low' %}selected{% endif %}>{{ t('find.near_low') }}</option><option value="high" {% if q.near == 'high' %}selected{% endif %}>{{ t('find.near_high') }}</option></select></label>
+    <label>{{ t('find.sort') }}
+      <select name="sort">{% for k in ['ret_1', 'ret_20', 'pe', 'dy', 'volume', 'range', 'symbol'] %}<option value="{{ k }}" {% if q.sort == k %}selected{% endif %}>{{ t('find.sort_' ~ k) }}</option>{% endfor %}</select></label>
+    <div class="actions"><button class="primary">{{ t('find.apply') }}</button><a class="btn" href="/find">{{ t('find.reset') }}</a></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="row between" style="margin-bottom:8px"><h2 style="margin:0">{{ t('find.results', n=rows | length) }}{% if rows | length >= limit %} <span class="muted">({{ t('find.results_capped', n=limit) }})</span>{% endif %}</h2></div>
+  {% if rows %}
+  <table class="compact">
+    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.sector') }}</th><th title="{{ t('help.cat') }}">{{ t('common.cat') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.session_1') }}</th><th class="num" title="{{ t('help.sessions_20') }}">{{ t('common.sessions_20') }}</th><th class="num" title="{{ t('help.vol20') }}">{{ t('common.vol20') }}</th><th title="{{ t('help.range_52w') }}">{{ t('common.range_52w') }}</th><th class="num" title="{{ t('help.pe') }}">{{ t('common.pe') }}</th><th class="num" title="{{ t('help.div_yield') }}">{{ t('common.div_yield') }}</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a><div class="muted small name" title="{{ r.name or '' }}">{{ r.name or "" }}</div></td>
+      <td class="muted small">{{ r.sector or "" }}</td>
+      <td>{% if r.category %}<span class="badge cat-{{ r.category }}">{{ r.category }}</span>{% endif %}</td>
+      <td class="num">{{ r.close | num }}</td>
+      <td class="num {{ 'up' if r.ret_1 and r.ret_1 > 0 else 'down' if r.ret_1 and r.ret_1 < 0 else '' }}">{{ r.ret_1 | pct }}{% if r.hit_upper %} <span class="badge up">{{ t('common.upper') }}</span>{% elif r.hit_lower %} <span class="badge down">{{ t('common.lower') }}</span>{% endif %}</td>
+      <td class="num {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}">{{ r.ret_20 | pct }}</td>
+      <td class="num">{{ r.vol_ratio_20 | num }}x</td>
+      <td style="min-width:110px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div>{% endif %}</td>
+      <td class="num">{{ r.pe | num if r.pe else "" }}</td>
+      <td class="num">{{ (r.dividend_yield | num(2)) ~ '%' if r.dividend_yield else "" }}</td>
+      <td>{% if r.symbol in watched %}<span class="muted small">{{ t('find.watching') }}</span>{% else %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link">{{ t('find.watch') }}</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help">{{ t('find.note') }} <a href="/learn#columns">{{ t('help.columns') }}</a></p>
+  {% else %}<p class="muted">{{ t('find.none') }}</p>{% endif %}
+</div>
+{% endblock %}

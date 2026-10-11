@@ -62,7 +62,8 @@ def test_first_visit_goes_to_register_then_dashboard(client):
     assert client.post("/watchlist/add", data={"symbol": "NOPE", "csrf": csrf}).status_code == 404
     assert client.post("/watchlist/add", data={"symbol": "ROBI", "csrf": "wrong"}).status_code == 400
     r = client.get("/")
-    assert "Grameenphone" in r.text and "ROBI" not in r.text and 'class="spark' in r.text
+    watched = r.text.split("Market today")[0]      # the market section below lists every stock that traded
+    assert "Grameenphone" in watched and "ROBI" not in watched and 'class="spark' in watched
 
     r = client.get("/symbol/GP")
     assert r.status_code == 200 and "Alert rules for GP" in r.text and "What is true right now" in r.text
@@ -106,7 +107,7 @@ def test_portfolio_page_with_holdings(env, tmp_path):
     db.upsert_holding(acc, "ROBI", 100, 10.0)
     r = client.get("/portfolio")
     assert r.status_code == 200 and "BO 1" in r.text and "pv-data" in r.text and "Telecom" in r.text
-    assert "Unrealised P&amp;L" in r.text
+    assert "Unrealised profit / loss" in r.text
     r = client.get("/")
     assert "Portfolio value" in r.text and "owned" in r.text          # held symbols are shown as owned
     r = client.get("/symbol/GP")
@@ -244,4 +245,37 @@ def test_overview_writes_ai_note_and_follows_language(env, monkeypatch):
     page = client.get("/").text
     assert "note-in-bn" in page and len(calls) == 2 and calls[-1][2] == "bn"
     assert db.digest_for(uid, last)["lang"] == "bn"
+
+
+def test_find_page_filters_and_presets(env):
+    client, _db = env
+    _register(client)
+    r = client.get("/find")
+    assert r.status_code == 200 and "GP" in r.text and "ROBI" in r.text and "Near 52-week low" in r.text
+    r = client.get("/find?sector=Telecom&category=A&sort=symbol")
+    assert r.status_code == 200 and "GP" in r.text
+    r = client.get("/find?sector=Bank")
+    assert "Nothing matches" in r.text
+    r = client.get("/find?ret20_min=5")                       # GP rose about 8% over 20 sessions, ROBI is flat
+    assert "GP" in r.text and 'title="Robi"' not in r.text
+    assert client.get("/find?preset=low").status_code == 200 and client.get("/find?preset=volume").status_code == 200
+    r = client.get("/find?pe_min=abc&ret20_min=5")            # junk is ignored, numbers are applied
+    assert r.status_code == 200
+
+
+def test_learn_page_in_both_languages(env):
+    client, _db = env
+    _register(client)
+    r = client.get("/learn")
+    assert r.status_code == 200 and "Circuit breakers" in r.text and "Big drop" in r.text and 'id="columns"' in r.text
+    client.get("/lang/bn")
+    r = client.get("/learn")
+    assert r.status_code == 200 and "সার্কিট ব্রেকার" in r.text
+
+
+def test_overview_market_section(env):
+    client, _db = env
+    _register(client)
+    r = client.get("/").text
+    assert "Market today" in r and "Telecom" in r and "Biggest moves" in r and "Upcoming record dates" in r
 

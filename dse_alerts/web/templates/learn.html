@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set active = "learn" %}
+{% block title %}{{ t('learn.title') }} - dse-alerts{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ t('learn.title') }}</h1><div class="sub">{{ t('learn.sub') }}</div></div></div>
+<div class="card learn">
+  <div class="toc">{% for id in sections %}<a href="#{{ id }}">{{ t('learn.' ~ id ~ '.t') }}</a>{% endfor %}</div>
+  {% for id in sections %}
+  <h2 id="{{ id }}">{{ t('learn.' ~ id ~ '.t') }}</h2>
+  {% for para in t('learn.' ~ id ~ '.b').split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+  {% if id == 'columns' %}
+  <dl>
+    {% for k in ['close', 'session_1', 'sessions_20', 'sessions_60', 'vol20', 'circuit', 'cat', 'kind', 'trend', 'range_52w', 'pe', 'sector_pe', 'div_yield', 'last_filing', 'weight', 'pnl'] %}
+    <dt>{{ t('common.' ~ ('watch' if k == 'kind' else k)) if k != 'kind' else t('help.kind_label') }}</dt><dd>{{ t('help.' ~ k) }}</dd>
+    {% endfor %}
+  </dl>
+  {% endif %}
+  {% if id == 'rules' %}
+  <dl>
+    {% for r in rules %}<dt>{{ t('rule.' ~ r.id ~ '.name') }}</dt><dd>{{ t('rule.' ~ r.id ~ '.desc') }}</dd>{% endfor %}
+  </dl>
+  {% endif %}
+  {% endfor %}
+  <p class="muted small" style="margin-top:24px">{{ t('footer.notice') }}</p>
+</div>
+{% endblock %}

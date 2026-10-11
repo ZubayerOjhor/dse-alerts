@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = "portfolio" %}
-{% block title %}{{ t('portfolio.title') }} · dse-alerts{% endblock %}
+{% block title %}{{ t('portfolio.title') }} - dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>{{ t('portfolio.title') }}</h1><div class="sub">{% if as_of %}{{ t('portfolio.sub', date=as_of) }}{% endif %}</div></div>
@@ -31,7 +31,7 @@
   <div class="card">
     <h2>{{ t('portfolio.by_sector') }}</h2>
     {% for s in sectors %}
-    <div class="hbar"><span>{{ s.sector or "–" }}</span><div class="bar"><span style="width: {{ (100 * s.weight) | round(1) }}%"></span></div><span class="num {{ 'up' if s.pnl > 0 else 'down' if s.pnl < 0 }}">{{ (100 * s.weight) | round(1) }}% · {{ '+' if s.pnl >= 0 }}{{ s.pnl | num(0) }}</span></div>
+    <div class="hbar"><span>{{ s.sector or t('market.other') }}</span><div class="bar"><span style="width: {{ (100 * s.weight) | round(1) }}%"></span></div><span class="num {{ 'up' if s.pnl > 0 else 'down' if s.pnl < 0 }}">{{ (100 * s.weight) | round(1) }}%, {{ '+' if s.pnl >= 0 }}{{ s.pnl | num(0) }}</span></div>
     {% endfor %}
     <h2 style="margin-top:16px">{{ t('portfolio.by_account') }}</h2>
     <table class="compact"><thead><tr><th>{{ t('common.account') }}</th><th class="num">{{ t('common.positions') }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.today') | capitalize }}</th></tr></thead><tbody>
@@ -47,7 +47,7 @@
 <div class="card">
   <h2>{{ t('portfolio.positions') }}</h2>
   <table class="compact">
-    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th>{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num">{{ t('common.avg_cost') }}</th><th class="num">{{ t('common.close') }}</th><th class="num">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.pnl_pct') }}</th><th class="num">{{ t('common.weight') }}</th><th>{{ t('common.sessions_60') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th>{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num" title="{{ t('help.avg_cost') }}">{{ t('common.avg_cost') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl_pct') }}</th><th class="num" title="{{ t('help.weight') }}">{{ t('common.weight') }}</th><th title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th></tr></thead>
     <tbody>
     {% for acc in positions_by_account %}
     <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>
@@ -68,6 +68,7 @@
     {% endfor %}
     </tbody>
   </table>
+  <p class="help"><a href="/learn#portfolio">{{ t('help.portfolio_link') }}</a></p>
 </div>
 {% endif %}
 {% endblock %}

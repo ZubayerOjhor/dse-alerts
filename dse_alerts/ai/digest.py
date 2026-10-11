@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 from typing import Any
 
 from dse_alerts.config import Settings
@@ -41,6 +42,8 @@ Rules you must follow:
 - Never advise. Do not say buy, sell, hold, accumulate, exit, wait, or any equivalent, and do not predict prices.
 - Do not invent facts. If something is not in the input, do not mention it.
 - No headings, no bullet points, no emojis. Plain prose. British or Bangladeshi English spelling is fine.
+- Plain punctuation only: commas, full stops and ordinary hyphens. No dashes, no arrows, no symbols. Write percentages as 9.8%, with no space before the sign.
+- Explain any term a first-time investor may not know in a few words the first time it appears (for example "upper circuit, the daily price limit").
 """
 
 LANG_NOTE = {
@@ -123,8 +126,12 @@ def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base
         "model": model,
         "messages": [{"role": "system", "content": system_prompt(lang)}, {"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 900 if lang == "bn" else 700,   # Bangla tokenises longer
+        # Bangla tokenises longer; reasoning models (gpt-oss) also spend completion tokens on
+        # hidden thinking, so the budget is generous and their effort is kept low.
+        "max_tokens": 2500 if lang == "bn" else 2000,
     }
+    if "gpt-oss" in model:
+        body["reasoning_effort"] = "low"
     with httpx.Client(timeout=120.0, transport=transport) as c:
         r = c.post(url, headers=headers, json=body)
     if r.status_code != 200:
@@ -136,6 +143,29 @@ def _via_openai_compatible(settings: Settings, prompt: str, transport=None, base
         log.warning("digest provider returned an unexpected body")
         return None
     return (text or "").strip() or None
+
+
+_TIDY = {
+    "\u2014": ", ", "\u2013": ", ", "\u2012": "-", "\u2011": "-", "\u2010": "-", "\u2212": "-",
+    "\u202f": " ", "\u00a0": " ", "\u2009": " ", "\u2026": "...", "\u2192": " to ", "\u2022": "",
+    "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u2726": "", "\u00d7": "x",
+}
+
+
+_BENGALI_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+
+
+def tidy(text: str) -> str:
+    """Normalise model output for a plain page: typographic dashes become commas or hyphens,
+    odd spaces become spaces, "9.8 %" becomes "9.8%", and repeated spaces collapse."""
+    for k, v in _TIDY.items():
+        text = text.replace(k, v)
+    text = text.translate(_BENGALI_DIGITS)   # numbers stay in Latin digits, as everywhere else in the UI
+    text = re.sub(r"(\d) %", r"\1%", text)
+    text = re.sub(r" ,", ",", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def write_digest_detailed(settings: Settings, session: dt.date, alerts: list[Alert], symbols: list[str],
@@ -155,7 +185,7 @@ def write_digest_detailed(settings: Settings, session: dt.date, alerts: list[Ale
             continue
         if text:
             log.info("digest written by %s (%s)", p["name"], p["model"])
-            return text, f"{p['name']}:{p['model']}"
+            return tidy(text), f"{p['name']}:{p['model']}"
         log.warning("digest via %s returned nothing; trying the next provider", p["name"])
     return None, None
 

@@ -46,17 +46,34 @@ HERE = Path(__file__).parent
 LANG_COOKIE = "dse_lang"
 LANG_MAX_AGE = 60 * 60 * 24 * 365
 
+# The Learn page, in reading order; each id has learn.<id>.t (title) and learn.<id>.b (body) in the catalogs.
+LEARN_SECTIONS = ["what", "not", "session", "circuit", "category", "volume", "unusual", "trend", "range", "pe", "psi",
+                  "dividend", "columns", "rules", "alerts", "scorecard", "portfolio", "ai"]
+
+# Stock finder presets: query values (percentages as the form shows them) that a preset fills in.
+FIND_PRESETS = {
+    "all": {},
+    "low": {"near": "low", "sort": "range"},
+    "high": {"near": "high", "sort": "ret_20"},
+    "volume": {"vol_min": 2.0, "sort": "volume"},
+    "cheap": {"category": "A", "pe_max": 10.0, "sort": "pe"},
+    "dividend": {"category": "A", "sort": "dy"},
+    "fallen": {"ret20_max": -15.0, "sort": "ret_20"},
+    "risen": {"ret20_min": 15.0, "sort": "ret_20"},
+}
+FIND_LIMIT = 150
+
 
 def _isnan(x):
     return x is None or (isinstance(x, float) and pd.isna(x))
 
 
 def _pct(x, digits=1):
-    return "–" if _isnan(x) else f"{100 * float(x):+.{digits}f}%"
+    return "-" if _isnan(x) else f"{100 * float(x):+.{digits}f}%"
 
 
 def _num(x, digits=1):
-    return "–" if _isnan(x) else f"{float(x):,.{digits}f}"
+    return "-" if _isnan(x) else f"{float(x):,.{digits}f}"
 
 
 def _records(df: pd.DataFrame) -> list[dict]:
@@ -264,10 +281,49 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             raw_today = [a for a in history if a["session_date"] == ms["last_session"].isoformat()]
             write_digest_if_due(user, ms["last_session"], [_alert_from_row(a, ms["last_session"]) for a in raw_today], lang=lang)
         digest = appdb.digest_for(user["id"], ms["last_session"])
+        mine = sorted({i["symbol"] for i in items} | {h["symbol"] for h in appdb.holdings(user["id"])})
+        record_dates = market.upcoming_record_dates(store, mine) if mine else []
+        record_scope = "mine" if record_dates else "market"
+        if not record_dates:
+            record_dates = market.upcoming_record_dates(store)[:8]
         return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
                       total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth,
-                      digest=dict(digest) if digest else None, ai_on=settings.ai_enabled)
+                      digest=dict(digest) if digest else None, ai_on=settings.ai_enabled,
+                      board=market.sector_board(store), movers=market.top_movers(store, 6),
+                      record_dates=record_dates, record_scope=record_scope)
+
+    # ---- stock finder and the learn page ----------------------------------------------
+
+    @app.get("/find", response_class=HTMLResponse)
+    def find_page(request: Request, user=Depends(require_user), preset: str = "", sector: str = "", category: str = "",
+                  pe_min: str = "", pe_max: str = "", ret20_min: str = "", ret20_max: str = "", vol_min: str = "",
+                  price_max: str = "", near: str = "", sort: str = "ret_1"):
+        lang = lang_of(request, user)
+
+        def num(v: str):
+            try:
+                return float(v) if v.strip() else None
+            except ValueError:
+                return None
+
+        q = {"sector": sector or None, "category": category.upper() or None, "pe_min": num(pe_min), "pe_max": num(pe_max),
+             "ret20_min": num(ret20_min), "ret20_max": num(ret20_max), "vol_min": num(vol_min), "price_max": num(price_max),
+             "near": near if near in ("low", "high") else None, "sort": sort if sort in market.SCREEN_SORTS else "ret_1"}
+        if preset in FIND_PRESETS:
+            q.update(FIND_PRESETS[preset])
+        rows = market.screen(store, sector=q["sector"], category=q["category"], pe_min=q["pe_min"], pe_max=q["pe_max"],
+                             ret20_min=None if q["ret20_min"] is None else q["ret20_min"] / 100,
+                             ret20_max=None if q["ret20_max"] is None else q["ret20_max"] / 100,
+                             near=q["near"], vol_min=q["vol_min"], price_max=q["price_max"], sort=q["sort"], limit=FIND_LIMIT)
+        watched = {i["symbol"] for i in appdb.items(user["id"])} | {h["symbol"] for h in appdb.holdings(user["id"])}
+        presets = [(pid, t(lang, "find.p_" + pid)) for pid in FIND_PRESETS]
+        return render(request, "find.html", active="find", rows=rows, q=q, preset=preset if preset in FIND_PRESETS else ("" if any(
+            v for k, v in q.items() if k != "sort") else "all"), presets=presets, sectors=market.sectors(store), watched=watched, limit=FIND_LIMIT)
+
+    @app.get("/learn", response_class=HTMLResponse)
+    def learn_page(request: Request, user=Depends(require_user)):
+        return render(request, "learn.html", active="learn", sections=LEARN_SECTIONS, rules=RULES)
 
     # ---- watchlist actions ------------------------------------------------------------
 

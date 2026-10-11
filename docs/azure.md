@@ -26,24 +26,24 @@ nightly feature build simply takes longer than on your PC. The web UI is unaffec
 
 ## 2. Create the machine (10 minutes)
 
-[portal.azure.com](https://portal.azure.com) → **Virtual machines** → **Create** → *Azure
+[portal.azure.com](https://portal.azure.com) > **Virtual machines** > **Create** > *Azure
 virtual machine*. Go through the tabs; everything not mentioned stays at its default.
 
 **Basics**
 
-* Resource group: *Create new* → `dse-alerts`.
+* Resource group: *Create new* > `dse-alerts`.
 * Virtual machine name: `dse-alerts`.
 * Region: student subscriptions are limited to a short list of regions (ours was UAE North,
   Malaysia West, South Central India, Indonesia Central and Japan West; Singapore was
   refused with "disallowed by Azure"). Pick the closest one the dropdown offers; the list
-  is in the portal under *Policy → Assignments → Allowed resource deployment regions*.
+  is in the portal under *Policy > Assignments > Allowed resource deployment regions*.
 * Availability options: *No infrastructure redundancy required*.
 * Image: **Ubuntu Server 24.04 LTS - x64 Gen2**.
-* Size: *See all sizes* → search `B2ats` → **B2ats_v2** (2 vCPUs, 1 GiB; carries the
+* Size: *See all sizes* > search `B2ats` > **B2ats_v2** (2 vCPUs, 1 GiB; carries the
   *Free services eligible* label).
 * Authentication type: **SSH public key**. Username: `azureuser`. SSH public key source:
   *Generate new key pair*, key pair name `dse-alerts`.
-* Public inbound ports: *Allow selected ports* → tick **SSH (22)**, **HTTP (80)** and
+* Public inbound ports: *Allow selected ports* > tick **SSH (22)**, **HTTP (80)** and
   **HTTPS (443)**.
 
 **Disks**: the default 30 GB *Standard SSD* is fine.
@@ -53,7 +53,7 @@ virtual machine*. Go through the tabs; everything not mentioned stays at its def
 **Management**: make sure **Enable auto-shutdown is off**. Azure likes to switch this on,
 and a machine that is shut down at 7 pm cannot send alerts.
 
-**Review + create** → **Create**. A dialog offers the private key: **Download private key
+**Review + create** > **Create**. A dialog offers the private key: **Download private key
 and create resource**. Keep the downloaded `dse-alerts.pem`; it is the only way in.
 
 When the deployment finishes, *Go to resource* and copy the **Public IP address**.

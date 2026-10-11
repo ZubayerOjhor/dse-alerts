@@ -78,3 +78,16 @@ def test_bangla_email_and_telegram():
     assert tg.startswith("DSE অ্যালার্ট") and tg.rstrip().endswith("পর্যবেক্ষণ, পরামর্শ নয়।")
     # English unchanged
     assert render.subject(ctx.session, alerts) == "DSE alerts 2026-10-08: 1 alert, 1 high (GP)"
+
+
+def test_no_typographic_symbols_in_user_facing_text():
+    """Plain punctuation only: no dashes, arrows, bullets or decorative glyphs in pages or catalogs."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "dse_alerts"
+    files = list((root / "web" / "templates").glob("*.html")) + list((root / "i18n").glob("*.json"))
+    bad = re.compile("[–—‑…→←•✦★☆✓✔⚠×·]")
+    hits = {f.name: sorted({hex(ord(c)) for c in bad.findall(f.read_text(encoding="utf-8"))}) for f in files}
+    assert not {k: v for k, v in hits.items() if v}
+

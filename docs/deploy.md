@@ -6,10 +6,10 @@ Three ways, from zero-maintenance to fully private. All of them run the same com
 ## 1. GitHub Actions (free, nothing to host)
 
 1. Fork this repository (private forks are fine).
-2. In your fork: **Settings → Secrets and variables → Actions → New repository secret**:
+2. In your fork: **Settings > Secrets and variables > Actions > New repository secret**:
    * `SMTP_USER`: your Gmail address
-   * `SMTP_PASSWORD`: a Gmail **App password** (Google Account → Security → 2-Step
-     Verification → App passwords). Your normal password will not work and should never
+   * `SMTP_PASSWORD`: a Gmail **App password** (Google Account > Security > 2-Step
+     Verification > App passwords). Your normal password will not work and should never
      be put anywhere.
    * Optional: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for Telegram delivery (create a
      bot with @BotFather, message it once, then `dse alerts telegram-id` locally shows the id).
@@ -20,7 +20,7 @@ Three ways, from zero-maintenance to fully private. All of them run the same com
      email carries your portfolio value, P&L and the day's movers. Held symbols are watched
      automatically.
 3. Copy `watchlist.example.json` to `watchlist.json`, edit it, commit (or use the secret above).
-4. **Actions → daily-alerts → Run workflow** once, with *dry run* ticked, and read the log.
+4. **Actions > daily-alerts > Run workflow** once, with *dry run* ticked, and read the log.
    Then run it again without dry run to get the first email.
 
 From then on it runs at 16:30 Bangladesh time on trading days. Market data is cached
@@ -53,7 +53,7 @@ daily at 16:30. A wrapper script keeps it to one line:
 dse data refresh && dse analysis features && dse alerts run
 ```
 
-* **Windows:** Task Scheduler → Create Basic Task → Daily 16:30 → Start a program →
+* **Windows:** Task Scheduler > Create Basic Task > Daily 16:30 > Start a program >
   `D:\path\to\dse-alerts\.venv\Scripts\dse.exe` is not enough on its own; point it at
   `cmd /c "cd /d D:\path\to\dse-alerts && .venv\Scripts\activate && run_daily.cmd"`.
   Weekends are skipped automatically because there is no new session.

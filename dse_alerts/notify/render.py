@@ -36,11 +36,11 @@ def _missing(x) -> bool:
 
 
 def _pct(x, d=1):
-    return "–" if _missing(x) else f"{100 * float(x):+.{d}f}%"
+    return "-" if _missing(x) else f"{100 * float(x):+.{d}f}%"
 
 
 def _num(x, d=0):
-    return "–" if _missing(x) else f"{float(x):,.{d}f}"
+    return "-" if _missing(x) else f"{float(x):,.{d}f}"
 
 
 def _tone(x):

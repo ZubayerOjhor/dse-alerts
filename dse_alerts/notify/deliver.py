@@ -47,7 +47,7 @@ def telegram_text(session: dt.date, alerts: list[Alert], digest: str | None = No
     if not alerts:
         lines.append(t(lang, "tg.nothing"))
     for a in render.sort_alerts(alerts):
-        mark = {"high": "!!", "notable": "!", "info": "·"}.get(a.severity, "·")
+        mark = {"high": "!!", "notable": "!", "info": "-"}.get(a.severity, "-")
         head, det = localize(a.rule_id, a.symbol, a.evidence, a.headline, a.detail, lang)
         lines += ["", f"{mark} {head}", f"   {det}"]
     if ctx and ctx.portfolio:

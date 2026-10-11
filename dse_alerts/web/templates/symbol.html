@@ -1,13 +1,11 @@
 {% extends "base.html" %}
 {% set active = "" %}
-{% block title %}{{ symbol }} · dse-alerts{% endblock %}
+{% block title %}{{ symbol }} - dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <h1>{{ symbol }} <span class="muted" style="font-weight:500">{{ inst.name or "" }}</span></h1>
-    <div class="sub">{{ inst.sector or "" }}{% if inst.category %} · <span class="badge cat-{{ inst.category }}">{{ t('symbol.category', cat=inst.category) }}</span>{% endif %}{% if inst.listing_year %} · {{ t('symbol.listed', year=inst.listing_year) }}{% endif %}
-      {% if holding %} · <span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span>{% endif %}
-      {% if item and item.kind == 'target' %} · <span class="badge target">{{ t('common.target') }}</span>{% endif %}</div>
+    <div class="sub meta">{% if inst.sector %}<span>{{ inst.sector }}</span>{% endif %}{% if inst.category %}<span><span class="badge cat-{{ inst.category }}" title="{{ t('help.cat') }}">{{ t('symbol.category', cat=inst.category) }}</span></span>{% endif %}{% if inst.listing_year %}<span>{{ t('symbol.listed', year=inst.listing_year) }}</span>{% endif %}{% if holding %}<span><span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span></span>{% endif %}{% if item and item.kind == 'target' %}<span><span class="badge target">{{ t('common.target') }}</span></span>{% endif %}</div>
   </div>
   <div class="row">
     {% if not item %}
@@ -25,8 +23,8 @@
   <div class="tile"><div class="label">{{ t('common.close') }}</div><div class="value">{{ last.close | num }}</div>
     <div class="delta {{ 'up' if last.ret_1 and last.ret_1 > 0 else 'down' if last.ret_1 and last.ret_1 < 0 else 'flat' }}">{{ last.ret_1 | pct(2) }} {{ t('common.today') }}</div><div class="note">{{ last.date }}</div></div>
   <div class="tile"><div class="label">{{ t('symbol.ret_20_60_250') }}</div><div class="value" style="font-size:19px">
-    <span class="{{ 'up' if ev.ret_20 and ev.ret_20 > 0 else 'down' if ev.ret_20 and ev.ret_20 < 0 }}">{{ ev.ret_20 | pct }}</span> ·
-    <span class="{{ 'up' if ev.ret_60 and ev.ret_60 > 0 else 'down' if ev.ret_60 and ev.ret_60 < 0 }}">{{ ev.ret_60 | pct }}</span> ·
+    <span class="{{ 'up' if ev.ret_20 and ev.ret_20 > 0 else 'down' if ev.ret_20 and ev.ret_20 < 0 }}">{{ ev.ret_20 | pct }}</span> /
+    <span class="{{ 'up' if ev.ret_60 and ev.ret_60 > 0 else 'down' if ev.ret_60 and ev.ret_60 < 0 }}">{{ ev.ret_60 | pct }}</span> /
     <span class="{{ 'up' if ev.ret_250 and ev.ret_250 > 0 else 'down' if ev.ret_250 and ev.ret_250 < 0 }}">{{ ev.ret_250 | pct }}</span></div>
     <div class="note">{{ t('symbol.dsex_same_20', pct=ev.dsex_20 | pct) }}</div></div>
   <div class="tile"><div class="label">{{ t('symbol.volume_today') }}</div><div class="value">{{ last.volume | num(0) }}</div>
@@ -56,7 +54,7 @@
       <div class="fact"><div class="label">{{ f.label }}</div><div class="value {{ f.tone }}">{{ f.value }}</div><div class="note">{{ f.note }}</div></div>
       {% endfor %}
     </div>
-    <p class="muted small" style="margin:12px 0 0">{{ t('symbol.true_note') }}</p>
+    <p class="muted small" style="margin:12px 0 0">{{ t('symbol.true_note') }} <a href="/learn#unusual">{{ t('help.more') }}</a></p>
   </div>
   <div class="card">
     <h2>{{ t('symbol.vs_dsex', symbol=symbol) }}</h2>
@@ -70,10 +68,10 @@
     <h2>{{ t('symbol.fundamentals') }} {% if fund %}<span class="muted">{{ t('symbol.as_of', date=fund.as_of) }}</span>{% endif %}</h2>
     {% if fund %}
     <table class="compact kv">
-      <tr><td>{{ t('symbol.pe_sector', pe=ev.sector_pe | num) }}</td><td>{{ fund.pe | num }}</td></tr>
+      <tr><td title="{{ t('help.pe') }}">{{ t('symbol.pe_sector', pe=ev.sector_pe | num) }}</td><td>{{ fund.pe | num }}</td></tr>
       <tr><td>{{ t('symbol.eps') }}</td><td>{{ fund.eps | num(2) }}</td></tr>
       <tr><td>{{ t('symbol.nav') }}</td><td>{{ fund.nav | num(2) }}</td></tr>
-      <tr><td>{{ t('symbol.price_nav') }}</td><td>{{ (fund.price / fund.nav) | num(2) if fund.nav else "–" }}</td></tr>
+      <tr><td>{{ t('symbol.price_nav') }}</td><td>{{ (fund.price / fund.nav) | num(2) if fund.nav else "-" }}</td></tr>
       <tr><td>{{ t('symbol.div_yield') }}</td><td>{{ fund.dividend_yield | num(2) }}%</td></tr>
       <tr><td>{{ t('symbol.free_float') }}</td><td>{{ fund.free_float_pct | num }}%</td></tr>
       <tr><td>{{ t('symbol.market_cap') }}</td><td>৳ {{ (fund.market_cap / 1e7) | num(1) }} {{ t('symbol.crore') }}</td></tr>

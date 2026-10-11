@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = "alerts" %}
-{% block title %}{{ t('alerts.title') }} · dse-alerts{% endblock %}
+{% block title %}{{ t('alerts.title') }} - dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ t('alerts.title') }}</h1><div class="sub">{{ t('alerts.sub') }}</div></div></div>
 <div class="card">
@@ -10,7 +10,7 @@
     <tbody>
     {% for a in alerts %}
     {% if loop.first or a.session_date != loop.previtem.session_date %}{% set d = digests.get(a.session_date) %}{% if d %}
-    <tr class="digest-row"><td class="muted">{{ a.session_date }}</td><td><span class="ai-mark" aria-hidden="true">✦</span></td><td colspan="4"><div class="digest small">{{ d.text }}</div><div class="muted small">{{ t('ai.by', provider=d.provider or 'AI') }}</div></td></tr>
+    <tr class="digest-row"><td class="muted">{{ a.session_date }}</td><td><span class="ai-tag">AI</span></td><td colspan="4"><div class="digest small">{{ d.text }}</div><div class="muted small">{{ t('ai.by', provider=d.provider or 'AI') }}</div></td></tr>
     {% endif %}{% endif %}
     <tr>
       <td class="muted">{{ a.session_date }}</td>

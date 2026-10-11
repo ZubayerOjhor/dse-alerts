@@ -14,7 +14,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-PAGES = [("overview", "/"), ("portfolio", "/portfolio"), ("targets", "/targets"), ("symbol", "/symbol/GP"),
+PAGES = [("overview", "/"), ("portfolio", "/portfolio"), ("targets", "/targets"), ("find", "/find?preset=low"), ("symbol", "/symbol/GP"), ("learn", "/learn"),
          ("alerts", "/alerts"), ("scorecard", "/scorecard"), ("rules", "/rules"), ("settings", "/settings")]
 
 

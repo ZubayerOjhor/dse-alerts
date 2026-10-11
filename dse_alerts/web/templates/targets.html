@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = "targets" %}
-{% block title %}{{ t('targets.title') }} · dse-alerts{% endblock %}
+{% block title %}{{ t('targets.title') }} - dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>{{ t('targets.title') }}</h1><div class="sub">{{ t('targets.sub') }}</div></div>
@@ -14,7 +14,7 @@
 {% if rows %}
 <div class="card">
   <table class="compact">
-    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th class="num">{{ t('common.close') }}</th><th class="num">{{ t('targets.s20') }}</th><th class="num">{{ t('targets.s60') }}</th><th class="num">{{ t('targets.s250') }}</th><th>{{ t('common.range_52w') }}</th><th>{{ t('common.trend') }}</th><th class="num">{{ t('common.vol20') }}</th><th class="num">{{ t('common.pe') }}</th><th class="num">{{ t('common.sector_pe') }}</th><th class="num">{{ t('common.div_yield') }}</th><th>{{ t('common.last_filing') }}</th><th>{{ t('common.sessions_60') }}</th><th></th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th title="{{ t('help.cat') }}">{{ t('common.cat') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.sessions_20') }}">{{ t('targets.s20') }}</th><th class="num">{{ t('targets.s60') }}</th><th class="num">{{ t('targets.s250') }}</th><th title="{{ t('help.range_52w') }}">{{ t('common.range_52w') }}</th><th title="{{ t('help.trend') }}">{{ t('common.trend') }}</th><th class="num" title="{{ t('help.vol20') }}">{{ t('common.vol20') }}</th><th class="num" title="{{ t('help.pe') }}">{{ t('common.pe') }}</th><th class="num" title="{{ t('help.sector_pe') }}">{{ t('common.sector_pe') }}</th><th class="num" title="{{ t('help.div_yield') }}">{{ t('common.div_yield') }}</th><th title="{{ t('help.last_filing') }}">{{ t('common.last_filing') }}</th><th title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
@@ -24,7 +24,7 @@
       <td class="num {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}">{{ r.ret_20 | pct }}</td>
       <td class="num {{ 'up' if r.ret_60 and r.ret_60 > 0 else 'down' if r.ret_60 and r.ret_60 < 0 else '' }}">{{ r.ret_60 | pct }}</td>
       <td class="num {{ 'up' if r.ret_250 and r.ret_250 > 0 else 'down' if r.ret_250 and r.ret_250 < 0 else '' }}">{{ r.ret_250 | pct }}</td>
-      <td style="min-width:120px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div><div class="muted small">{{ r.low_250 | num }} – {{ r.high_250 | num }}</div>{% endif %}</td>
+      <td style="min-width:120px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div><div class="muted small">{{ r.low_250 | num }} {{ t('common.to') }} {{ r.high_250 | num }}</div>{% endif %}</td>
       <td><span class="badge {{ 'up' if r.trend == 'above' else 'down' if r.trend == 'below' else 'info' }}">{{ t('trend.' ~ r.trend) }}</span></td>
       <td class="num">{{ r.vol_ratio_20 | num }}x</td>
       <td class="num">{{ r.pe | num }}</td><td class="num muted">{{ r.sector_pe | num }}</td><td class="num">{{ r.dividend_yield | num(2) }}%</td>
@@ -35,6 +35,7 @@
     {% endfor %}
     </tbody>
   </table>
+  <p class="help"><a href="/learn#columns">{{ t('help.columns') }}</a></p>
 </div>
 {% else %}
 <div class="card"><p class="muted">{{ t('targets.none') }}</p></div>

@@ -17,16 +17,16 @@ def _f(v):
 
 
 def _pct(x, d=1):
-    return "–" if x is None else f"{100 * x:+.{d}f}%"
+    return "-" if x is None else f"{100 * x:+.{d}f}%"
 
 
 def _num(x, d=1):
-    return "–" if x is None else f"{x:,.{d}f}"
+    return "-" if x is None else f"{x:,.{d}f}"
 
 
 def _date(x) -> str:
     try:
-        return "–" if x is None or pd.isna(x) else pd.Timestamp(x).strftime("%Y-%m-%d")
+        return "-" if x is None or pd.isna(x) else pd.Timestamp(x).strftime("%Y-%m-%d")
     except (TypeError, ValueError):
         return str(x)
 
@@ -152,7 +152,7 @@ def evidence(store: MarketStore, symbol: str, stats: pd.Series | None, fund: pd.
                   "args2": {"up": _num(st("upper_hits_per_250")), "down": _num(st("lower_hits_per_250"))}})
     if pe is not None:
         rel = ("fact.rel_below" if sector_pe and pe < sector_pe else "fact.rel_above" if sector_pe and pe > sector_pe else "fact.rel_at") if sector_pe else "fact.rel_none"
-        pnav = _num(_f(fund.get("price")) / _f(fund.get("nav")), 2) if _f(fund.get("nav")) else "–"
+        pnav = _num(_f(fund.get("price")) / _f(fund.get("nav")), 2) if _f(fund.get("nav")) else "-"
         facts.append({"id": "valuation", "label": "fact.valuation", "value": f"P/E {pe:.1f}", "tone": "",
                       "note": "fact.valuation_note", "args": {"rel": rel, "rel_args": {"pe": _num(sector_pe)}, "dy": _num(_f(fund.get("dividend_yield")), 2), "pnav": pnav}})
     if news is not None and not news.empty:

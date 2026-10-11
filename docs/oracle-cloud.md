@@ -10,7 +10,7 @@ demo** button, open registration, daily alerts, and HTTPS, for US$0 a month.
 
 ## 1. Oracle account (10 minutes)
 
-1. Go to [cloud.oracle.com](https://cloud.oracle.com) → *Sign up*. Pick the **home region**
+1. Go to [cloud.oracle.com](https://cloud.oracle.com) > *Sign up*. Pick the **home region**
    carefully; it cannot be changed. For Bangladesh, **Singapore (ap-singapore-1)** or
    **Mumbai (ap-mumbai-1)** are closest. If one is "out of capacity" later, Frankfurt and
    Phoenix usually have room.
@@ -50,21 +50,21 @@ either way ([docs/hosting.md](hosting.md)).
 
 Oracle blocks everything except SSH by default, in two places. This is the network one.
 
-1. Menu ☰ → **Networking → Virtual cloud networks**. If none exists, *Start VCN Wizard →
+1. Menu > **Networking > Virtual cloud networks**. If none exists, *Start VCN Wizard >
    Create VCN with Internet Connectivity*, accept the defaults, *Create*.
-2. Open the VCN → **Security Lists** → *Default Security List* → **Add Ingress Rules**:
+2. Open the VCN > **Security Lists** > *Default Security List* > **Add Ingress Rules**:
    * Source CIDR `0.0.0.0/0`, IP protocol TCP, destination port range `80`
    * Source CIDR `0.0.0.0/0`, IP protocol TCP, destination port range `443`
 
 ## 3. Create the machine (5 minutes)
 
-1. Menu ☰ → **Compute → Instances → Create instance**.
+1. Menu > **Compute > Instances > Create instance**.
 2. Name it `dse-alerts`.
-3. **Image and shape → Edit**: Image **Canonical Ubuntu 24.04** (not Oracle Linux; the
-   setup script assumes Ubuntu). Shape: *Ampere* → **VM.Standard.A1.Flex**, 2 OCPUs, 12 GB
+3. **Image and shape > Edit**: Image **Canonical Ubuntu 24.04** (not Oracle Linux; the
+   setup script assumes Ubuntu). Shape: *Ampere* > **VM.Standard.A1.Flex**, 2 OCPUs, 12 GB
    memory (both show the *Always Free-eligible* label).
 4. **Networking**: the VCN from step 2, public subnet, *Assign a public IPv4 address*.
-5. **Add SSH keys → Generate a key pair for me → Save private key**. Keep the downloaded
+5. **Add SSH keys > Generate a key pair for me > Save private key**. Keep the downloaded
    file; it is the only way in.
 6. Boot volume: the default 50 GB is fine (200 GB is free in total).
 7. *Create*. If you see **Out of host capacity**, the region is full of A1 machines right

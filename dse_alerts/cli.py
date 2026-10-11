@@ -518,7 +518,7 @@ def scorecard(email: str = typer.Option(...)):
     import math
 
     def f(v, digits=1, sign="+"):
-        return "–" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{100 * v:{sign}.{digits}f}%"
+        return "-" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{100 * v:{sign}.{digits}f}%"
 
     t = Table("rule", "alerts", "scored", "fwd 5 median", "fwd 20 median", "positive", "vs DSEX (20)", "backtest fwd 20")
     for r in agg.itertuples():

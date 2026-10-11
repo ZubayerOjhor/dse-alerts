@@ -25,13 +25,16 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
 | | |
 |---|---|
 | **Alerts** | 13 DSE-specific rules; each one states a fact about the latest session and carries the numbers behind it. Delivered by **email** (HTML, with your portfolio snapshot) and **Telegram**, and kept in a local outbox. |
-| **Calibrated thresholds** | "Big" means big *for that stock*: thresholds come from each company's own history (977k sessions, 2013–2026), not from a fixed percentage. Every rule is backtested and the numbers are published. |
+| **Calibrated thresholds** | "Big" means big *for that stock*: thresholds come from each company's own history (977k sessions, 2013 to 2026), not from a fixed percentage. Every rule is backtested and the numbers are published. |
 | **Portfolio** | Import your BO statements once; see market value, cost, unrealised P&L, the day's move, value history, allocation by sector, and every position with a 60-session sparkline. Several accounts are fine. |
 | **Targets** | Companies you are considering, side by side: 20/60/250-session moves, position in the 52-week range, trend vs moving averages, volume, P/E against the sector median, last filing. |
+| **Market today** | On the overview: a sector board coloured by the session's moves, the biggest risers and fallers, and upcoming dividend record dates for your symbols. |
+| **Find stocks** | A simple screener over every stock that traded: sector, category, P/E, 20-session move, volume vs average, distance from the 52-week low or high, with one-click presets. |
+| **Learn** | A plain-language page for first-time investors: sessions, circuit breakers, categories, percentiles, P/E, record dates, and what every column and rule means. Every column heading also explains itself on hover. |
 | **Symbol page** | Candlesticks with SMA 20/50 and volume, the stock vs DSEX indexed to 100, "what is true right now" panels, fundamentals, filings, dividends, and the rule switches for that stock. |
 | **Scorecard** | What happened 5 and 20 sessions after each alert you were sent, next to the backtest's expectation. It grades the rules, not you. |
 | **AI summary (optional)** | A short written note per session from Groq, OpenRouter or Claude, in that order of preference, shown on the overview and included in the email. Told never to advise. Off unless you add a key. |
-| **Two languages** | English and Bangla, for every page, every alert, the email, Telegram and the AI note. One toggle in the header. |
+| **Two languages** | English and Bangla, for every page, every alert, the email, Telegram, the Learn page and the AI note. One toggle in the header. |
 | **Four themes** | Light, dark, midnight, terminal. Charts follow the theme. |
 | **Demo mode** | For a public instance: a shared read-only account with a sample list and portfolio, so visitors can look around without signing up. |
 
@@ -87,7 +90,7 @@ dse web serve               # http://127.0.0.1:8000
 
 **History before 2024.** The DSE site only serves about a year of history. For everything
 older, download the curated archive by hand (its files are not exposed to scripts):
-[Mendeley 23553sm4tn](https://data.mendeley.com/datasets/23553sm4tn/4) → *Download All* →
+[Mendeley 23553sm4tn](https://data.mendeley.com/datasets/23553sm4tn/4) > *Download All* >
 extract under `data/raw/mendeley_23553sm4tn/`, then run `dse data bootstrap` again. Without
 it, an automatically downloaded fallback archive supplies 2023 onward. Why only 2023, when
 that file claims 25 years: its pre-2023 rows are misdated by months, which a circuit-breaker
@@ -162,11 +165,11 @@ dse_alerts/
   notify/      delivery context, text + HTML rendering, email, Telegram, outbox
   ai/          optional summary via Groq / OpenRouter / Anthropic
   i18n/        English and Bangla catalogs; alert headlines rebuilt per language
-  web/         FastAPI app, templates, vendored chart library, four themes, demo mode
+  web/         FastAPI app, templates (overview, portfolio, targets, find, learn, ...), vendored chart library, four themes, demo mode
 calibration/   symbol_stats.csv, the per-stock baselines from the 14-year calibration
 scripts/       scheduler.sh / start.sh for containers; screenshots.py
 docs/          data-quality audit, calibration report, deployment and hosting guides, screenshots
-tests/         60 tests (archive cleaning, store semantics, rules, engine, web, email, i18n, portfolio)
+tests/         64 tests (archive cleaning, store semantics, rules, engine, web, email, i18n, portfolio)
 ```
 
 ## Licence
