@@ -105,8 +105,9 @@ consistency test exposed. The audit is in [docs/data-quality.md](docs/data-quali
 * **Docker**: `docker compose up -d` gives you the web UI and a scheduler.
 
 To put one instance on the internet for other people to try, with the demo account and
-open registration, see [docs/hosting.md](docs/hosting.md) (Fly.io in five commands, or any
-box with Docker).
+open registration, see [docs/hosting.md](docs/hosting.md): free on Oracle Cloud's Always
+Free machine ([step by step](docs/oracle-cloud.md), one setup script), or Fly.io in five
+commands, or any box with Docker.
 
 ## Languages
 

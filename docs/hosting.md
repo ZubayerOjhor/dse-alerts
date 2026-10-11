@@ -60,17 +60,20 @@ being killed, change `memory = "2gb"` and `fly deploy` again (about US$11 a mont
 
 **Updates.** `git pull && fly deploy`. The volume (data, accounts, alert history) survives.
 
-## Option B: any Linux box with Docker (VPS, home server, Oracle Cloud free tier)
+## Option B: Oracle Cloud Always Free (US$0) or any Linux box with Docker
+
+Oracle's free ARM machine is the one genuinely free host that fits: persistent disk, always
+on, enough memory. The click-by-click guide is [docs/oracle-cloud.md](oracle-cloud.md). On
+any fresh Ubuntu machine, the server side is one command:
 
 ```bash
-git clone https://github.com/ZubayerOjhor/dse-alerts && cd dse-alerts
-cp .env.example .env            # set APP_SECRET_KEY, APP_DEMO=1, APP_PUBLIC_URL, SMTP_*, GROQ_API_KEY
-docker compose up -d            # web on :8000 + scheduler, sharing one volume
+curl -fsSL https://raw.githubusercontent.com/ZubayerOjhor/dse-alerts/main/scripts/vm-setup.sh | bash
 ```
 
-Put a reverse proxy with HTTPS in front (Caddy is two lines: `your.domain { reverse_proxy :8000 }`).
-Oracle Cloud's Always Free ARM machine (4 cores, 24 GB) runs this comfortably at no cost,
-with more setup than Fly.
+It installs Docker, opens ports 80/443, clones the repository, writes `.env` (random
+secret, demo mode on, an `<ip>.sslip.io` hostname so HTTPS works without a domain) and
+starts `docker compose --profile https up -d`: web UI, scheduler and a Caddy proxy that
+fetches the certificate. Add `SMTP_*` and `GROQ_API_KEY` to `.env` afterwards.
 
 ## Option C: Render / Railway
 

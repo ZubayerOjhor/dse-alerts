@@ -1,0 +1,6 @@
+# HTTPS in front of the web container. DOMAIN comes from .env; Caddy fetches and renews the
+# certificate itself (Let's Encrypt). Used by the "https" profile in docker-compose.yml.
+{$DOMAIN} {
+    encode gzip
+    reverse_proxy web:8000
+}

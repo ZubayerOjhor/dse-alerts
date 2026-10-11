@@ -1,7 +1,8 @@
 # docker compose up -d
-#   web        the UI on http://localhost:8000
+#   web        the UI on http://localhost:8000 (bound to localhost; the caddy profile exposes it publicly)
 #   scheduler  pulls data, rebuilds features and runs alerts at 16:30 Bangladesh time, Sun-Thu
-# Both share the /data volume. Put SMTP_* and AI_* settings in .env next to this file.
+#   caddy      optional HTTPS proxy: docker compose --profile https up -d   (DOMAIN in .env)
+# All share the /data volume. Put SMTP_* and AI_* settings in .env next to this file.
 services:
   web:
     build: .
@@ -10,7 +11,7 @@ services:
       DSE_DATA_DIR: /data
       APP_HOST: 0.0.0.0
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - dse-data:/data
     restart: unless-stopped
@@ -28,5 +29,23 @@ services:
     # then refresh, rebuild features and run the alerts at 16:30 Dhaka time on trading days
     command: ["sh", "scripts/scheduler.sh"]
 
+  # HTTPS proxy for a public instance: `docker compose --profile https up -d` with DOMAIN in .env
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
 volumes:
   dse-data:
+  caddy-data:
+  caddy-config:
