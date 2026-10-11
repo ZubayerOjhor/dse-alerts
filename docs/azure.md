@@ -33,8 +33,10 @@ virtual machine*. Go through the tabs; everything not mentioned stays at its def
 
 * Resource group: *Create new* → `dse-alerts`.
 * Virtual machine name: `dse-alerts`.
-* Region: **(Asia Pacific) Southeast Asia** (Singapore). If the free size is not offered
-  there, *East Asia* or *Central India* are the next closest.
+* Region: student subscriptions are limited to a short list of regions (ours was UAE North,
+  Malaysia West, South Central India, Indonesia Central and Japan West; Singapore was
+  refused with "disallowed by Azure"). Pick the closest one the dropdown offers; the list
+  is in the portal under *Policy → Assignments → Allowed resource deployment regions*.
 * Availability options: *No infrastructure redundancy required*.
 * Image: **Ubuntu Server 24.04 LTS - x64 Gen2**.
 * Size: *See all sizes* → search `B2ats` → **B2ats_v2** (2 vCPUs, 1 GiB; carries the
