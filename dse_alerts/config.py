@@ -14,6 +14,10 @@ class Settings(BaseSettings):
 
     # storage
     dse_data_dir: Path = Field(default=Path("./data"))
+    # DuckDB caps for small machines (a 1 GB VM). Blank = DuckDB's defaults (80% of RAM, all
+    # cores). With a cap, DuckDB spills to disk under dse_data_dir instead of being killed.
+    dse_duckdb_memory: str = ""       # e.g. 400MB
+    dse_duckdb_threads: int = 0       # 0 = all cores
 
     # email (optional)
     smtp_host: str = "smtp.gmail.com"

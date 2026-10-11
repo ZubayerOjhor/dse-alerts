@@ -100,6 +100,23 @@ CREATE TABLE IF NOT EXISTS ingest_log (
 """
 
 
+def open_duckdb(path: Path | str | None = None, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+    """Open a DuckDB connection (file, or in-memory when ``path`` is None) with the resource caps
+    from settings applied. Spill files go under the data directory."""
+    from dse_alerts.config import get_settings
+
+    con = duckdb.connect(str(path) if path else ":memory:", read_only=read_only)
+    s = get_settings()
+    if s.dse_duckdb_memory:
+        tmp = s.dse_data_dir / "duckdb_tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        con.execute(f"SET memory_limit = '{s.dse_duckdb_memory}'")
+        con.execute(f"SET temp_directory = '{tmp.as_posix()}'")
+    if s.dse_duckdb_threads > 0:
+        con.execute(f"SET threads = {s.dse_duckdb_threads}")
+    return con
+
+
 class MarketStore:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -109,7 +126,7 @@ class MarketStore:
 
     @contextmanager
     def connect(self, read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
-        con = duckdb.connect(str(self.path), read_only=read_only)
+        con = open_duckdb(self.path, read_only=read_only)
         try:
             yield con
         finally:

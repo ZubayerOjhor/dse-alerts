@@ -33,8 +33,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import duckdb
 import pandas as pd
+
+from dse_alerts.data.store import open_duckdb
 
 ARCHIVE_URL = "https://data.mendeley.com/datasets/5mww8rb9td/1"
 ARCHIVE_FILES = {
@@ -62,7 +63,7 @@ def find_curated(raw_dir: Path) -> Path | None:
 
 def load_curated(csv_path: Path) -> tuple[pd.DataFrame, dict]:
     """Return (prices frame, stats) for the curated archive. Same columns as ``load``."""
-    con = duckdb.connect()
+    con = open_duckdb()
     con.execute(
         f"""
         CREATE TABLE raw AS
@@ -109,7 +110,7 @@ def download(dest_dir: Path) -> Path:
 
 def load(csv_path: Path, reliable_from: str = RELIABLE_FROM) -> tuple[pd.DataFrame, dict]:
     """Return (clean prices frame, stats). Columns: symbol, date, open, high, low, close, volume, date_quality."""
-    con = duckdb.connect()
+    con = open_duckdb()
     con.execute(
         f"""
         CREATE TABLE raw AS

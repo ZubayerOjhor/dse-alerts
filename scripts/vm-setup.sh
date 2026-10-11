@@ -49,6 +49,10 @@ if [ ! -f .env ]; then
   SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))' 2>/dev/null || openssl rand -hex 32)
   sed -i "s|^APP_SECRET_KEY=.*|APP_SECRET_KEY=$SECRET|; s|^APP_HOST=.*|APP_HOST=0.0.0.0|; s|^APP_DEMO=.*|APP_DEMO=1|; s|^APP_PUBLIC_URL=.*|APP_PUBLIC_URL=https://$DOMAIN|" .env
   printf '\n# HTTPS proxy (docker compose --profile https); a hostname that points at this machine\nDOMAIN=%s\n' "$DOMAIN" >> .env
+  if [ "$MEM_MB" -lt 3000 ]; then
+    sed -i "s|^DSE_DUCKDB_MEMORY=.*|DSE_DUCKDB_MEMORY=300MB|; s|^DSE_DUCKDB_THREADS=.*|DSE_DUCKDB_THREADS=2|" .env
+    echo "   small machine (${MEM_MB} MB): DuckDB capped at 300MB per process, spills to disk"
+  fi
   echo "   wrote .env for https://$DOMAIN"
   echo "   add SMTP_USER / SMTP_PASSWORD (Gmail app password) and GROQ_API_KEY later with:  nano $DIR/.env  then  sudo docker compose --profile https up -d"
 fi

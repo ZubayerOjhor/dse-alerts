@@ -118,8 +118,10 @@ charged without you adding a card, but the machine stops, so move the data out f
 * **History before 2023:** download the curated archive on your PC (README), then copy the
   finished database up once:
   `scp -i <key> data/market.duckdb azureuser@<ip>:/tmp/ && ssh -i <key> azureuser@<ip> "sudo docker cp /tmp/market.duckdb dse-alerts-web-1:/data/market.duckdb && cd dse-alerts && sudo docker compose --profile https restart"`.
-* **If the feature build is killed** (`Killed` in the scheduler log): the swap file was not
-  enough. `sudo fallocate -l 6G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2`,
-  then `sudo docker compose --profile https restart scheduler`.
+* **Memory.** Left alone, DuckDB takes 80% of the machine's memory and the feature build
+  peaks near 2 GB. The setup script therefore sets `DSE_DUCKDB_MEMORY=300MB` and
+  `DSE_DUCKDB_THREADS=2` in `.env` on machines under 3 GB, so DuckDB spills to disk
+  instead (measured: the build then peaks at about 450 MB resident, under 20 seconds). If the
+  scheduler log ever shows `Killed`, add swap (`sudo fallocate -l 4G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2`) and restart. Do not go below `300MB`; DuckDB cannot finish the build under that.
 * **Backups:** everything lives in the `dse-alerts_dse-data` Docker volume. Copy `app.sqlite`
   out of it occasionally: `sudo docker cp dse-alerts-web-1:/data/app.sqlite ./app-backup.sqlite`.
