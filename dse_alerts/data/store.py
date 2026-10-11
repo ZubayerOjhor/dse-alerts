@@ -13,6 +13,7 @@ One file (``market.duckdb``) holds everything the alert engine reads:
 from __future__ import annotations
 
 import datetime as dt
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -100,12 +101,27 @@ CREATE TABLE IF NOT EXISTS ingest_log (
 """
 
 
+LOCK_WAIT_SECONDS = 20.0
+
+
 def open_duckdb(path: Path | str | None = None, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection (file, or in-memory when ``path`` is None) with the resource caps
     from settings applied. Spill files go under the data directory."""
     from dse_alerts.config import get_settings
 
-    con = duckdb.connect(str(path) if path else ":memory:", read_only=read_only)
+    target = str(path) if path else ":memory:"
+    # Another process (the scheduler during its daily run, or the web UI) may hold the file
+    # lock for a moment; DuckDB allows one writing process at a time. Wait briefly instead
+    # of failing the request.
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            con = duckdb.connect(target, read_only=read_only)
+            break
+        except duckdb.IOException as e:
+            if "lock" not in str(e).lower() or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.25)
     s = get_settings()
     if s.dse_duckdb_memory:
         tmp = s.dse_data_dir / "duckdb_tmp"
