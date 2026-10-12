@@ -261,10 +261,10 @@ def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     d = soon.iloc[0]
     return Alert(
         symbol=ctx.row["symbol"], rule_id="record_date", date=ctx.as_of,
-        headline=f"{ctx.row['symbol']} record date on {d['record_date']}: {str(d['dividend'])[:60]}",
+        headline=f"{ctx.row['symbol']} record date on {pd.Timestamp(d['record_date']).date()}: {str(d['dividend'])[:60]}",
         detail=f"Year end {d.get('year_end', '')}; AGM {d.get('agm_date', '')}. Declared {d.get('declared_on', '')}.",
         severity="info",
-        evidence={"record_date": str(d["record_date"]), "dividend": str(d["dividend"])},
+        evidence={"record_date": str(pd.Timestamp(d["record_date"]).date()), "dividend": str(d["dividend"])},
     )
 
 

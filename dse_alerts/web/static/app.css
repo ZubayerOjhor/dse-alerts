@@ -80,6 +80,14 @@ footer { max-width: 1240px; margin: 0 auto; padding: 0 22px max(32px, env(safe-a
 .grid.cols-2 { grid-template-columns: 1.4fr 1fr; } .grid.cols-3 { grid-template-columns: repeat(3, 1fr); } .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .grid.even { grid-template-columns: 1fr 1fr; }
 @media (max-width: 900px) { .grid.cols-2, .grid.cols-3, .grid.cols-4, .grid.even { grid-template-columns: 1fr; } main { padding: 14px 14px 40px; } .top { padding: 8px 14px; gap: 10px; } nav.main a { padding: 6px 8px; } }
+/* up to small tablets the nine links do not fit beside the controls: the nav takes its own
+   row and scrolls sideways if it must */
+@media (max-width: 1000px) {
+  .top { flex-wrap: wrap; row-gap: 6px; }
+  nav.main { order: 3; flex: 1 1 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  nav.main::-webkit-scrollbar { display: none; }
+  .top .right { margin-left: auto; }
+}
 
 /* stat tiles */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
