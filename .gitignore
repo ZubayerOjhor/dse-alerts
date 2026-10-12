@@ -26,3 +26,6 @@ Thumbs.db
 data/web.log
 data/web.err
 data/*.private.*
+
+# personal brokerage statements used to build the sample portfolio; never published
+My Stocks/

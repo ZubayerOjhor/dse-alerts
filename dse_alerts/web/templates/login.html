@@ -7,7 +7,7 @@
   {% if error %}<p class="error">{{ t(error) }}</p>{% endif %}
   <form method="post" action="/login">
     <label>{{ t('login.email') }} <input type="email" name="email" required autofocus></label>
-    <label>{{ t('login.password') }} <input type="password" name="password" required></label>
+    <label>{{ t('login.password') }} <input type="password" name="password" maxlength="128" required></label>
     <button class="primary">{{ t('login.submit') }}</button>
   </form>
   <p class="muted small">{{ t('login.no_account') }} <a href="/register">{{ t('login.create') }}</a>.</p>

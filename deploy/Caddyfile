@@ -1,6 +1,16 @@
 # HTTPS in front of the web container. DOMAIN comes from .env; Caddy fetches and renews the
 # certificate itself (Let's Encrypt). Used by the "https" profile in docker-compose.yml.
+# The app adds the other security headers itself (see SECURITY_HEADERS in dse_alerts/web/app.py).
 {$DOMAIN} {
     encode gzip
-    reverse_proxy web:8000
+    request_body {
+        max_size 256KB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+    reverse_proxy web:8000 {
+        header_down -Server
+    }
 }

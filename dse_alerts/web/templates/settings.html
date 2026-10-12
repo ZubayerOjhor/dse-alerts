@@ -11,13 +11,31 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>{{ t('settings.login_email') }} <input value="{{ user.email }}" disabled></label>
       <label>{{ t('settings.alert_to') }} <input type="email" name="alert_to" value="{{ user.alert_email or user.email }}" {% if demo %}disabled{% endif %}></label>
-      <label>{{ t('settings.telegram') }} <span class="muted">{{ t('settings.telegram_note') }} <code>dse alerts telegram-id</code>)</span> <input name="telegram_chat_id" value="{{ user.telegram_chat_id or '' }}" {% if demo %}disabled{% endif %}></label>
+      <label>{{ t('settings.telegram') }} <span class="muted">{{ t('settings.telegram_note') }}</span> <input name="telegram_chat_id" value="{{ user.telegram_chat_id or '' }}" inputmode="numeric" {% if demo %}disabled{% endif %}></label>
       <label>{{ t('settings.language') }}
         <select name="lang">{% for code, name in langs.items() %}<option value="{{ code }}" {% if (user.lang or 'en') == code %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label class="check"><input type="checkbox" name="digest" {% if user.digest_enabled %}checked{% endif %}> {{ t('settings.digest') }}</label>
       <label>{{ t('settings.new_password') }} <span class="muted">{{ t('settings.keep') }}</span> <input type="password" name="password" minlength="8" {% if demo %}disabled{% endif %}></label>
       {% if not demo %}<button class="primary">{{ t('common.save') }}</button>{% else %}<p class="muted small">{{ t('demo.readonly') }}</p>{% endif %}
     </form>
+    {% if not demo %}
+    <h2 style="margin-top:18px">{{ t('settings.delivery') }}</h2>
+    {% set dest = user.alert_email or user.email %}
+    {% if dest == user.email_confirmed %}
+    <p class="small">{{ t('settings.email_confirmed', email=dest) }}</p>
+    {% else %}
+    <p class="small"><span class="error">{{ t('settings.email_unconfirmed', email=dest) }}</span>
+      {% if email_on %}<form method="post" action="/confirm/resend" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ t('settings.resend') }}</button></form>{% else %}{{ t('settings.email_unavailable') }}{% endif %}</p>
+    {% endif %}
+    {% if user.telegram_chat_id %}
+      {% if user.telegram_chat_id == user.telegram_confirmed %}
+      <p class="small">{{ t('settings.telegram_verified', chat=user.telegram_chat_id) }}</p>
+      {% else %}
+      <p class="small"><span class="error">{{ t('settings.telegram_pending', code=user.telegram_code or '', bot=bot) if bot else t('settings.telegram_pending_nobot', code=user.telegram_code or '') }}</span>
+        <form method="post" action="/telegram/verify" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ t('settings.verify') }}</button></form></p>
+      {% endif %}
+    {% endif %}
+    {% endif %}
     {% if accounts %}
     <h2 style="margin-top:18px">{{ t('settings.accounts') }}</h2>
     {% for a in accounts %}
@@ -29,17 +47,19 @@
     <h2>{{ t('settings.installation') }}</h2>
     <table class="compact kv">
       <tr><td>{{ t('settings.market_data') }}</td><td>{{ t('settings.market_data_value', rows=market.rows | num(0), symbols=market.symbols, date=market.last_session) }}</td></tr>
-      <tr><td>{{ t('settings.email') }}</td><td>{{ t('settings.email_on', user=settings.smtp_user) if settings.email_enabled else t('settings.email_off') }}</td></tr>
+      <tr><td>{{ t('settings.email') }}</td><td>{{ (t('settings.email_on', user=settings.smtp_user) if admin else t('settings.configured')) if settings.email_enabled else t('settings.email_off') }}</td></tr>
       <tr><td>{{ t('settings.telegram_row') }}</td><td>{{ t('settings.telegram_on') if settings.telegram_enabled else t('settings.off') }}</td></tr>
       <tr><td>{{ t('settings.ai') }}</td><td>{{ settings.ai_label if settings.ai_enabled else t('settings.off') }}</td></tr>
-      {% if not demo %}<tr><td>{{ t('settings.data_dir') }}</td><td><code>{{ settings.dse_data_dir }}</code></td></tr>{% endif %}
+      {% if admin %}<tr><td>{{ t('settings.data_dir') }}</td><td><code>{{ settings.dse_data_dir }}</code></td></tr>{% endif %}
     </table>
+    {% if admin %}
     <h2 style="margin-top:18px">{{ t('settings.runs') }}</h2>
     {% if runs %}
     <table class="compact"><thead><tr><th>{{ t('settings.started') }}</th><th>{{ t('common.session') }}</th><th class="num">{{ t('settings.symbols') }}</th><th class="num">{{ t('settings.new_alerts') }}</th><th class="num">{{ t('common.delivered') }}</th><th>{{ t('common.status') }}</th></tr></thead><tbody>
     {% for r in runs %}<tr><td class="muted">{{ r.started_at }}</td><td>{{ r.session_date or "" }}</td><td class="num">{{ r.symbols or "" }}</td><td class="num">{{ r.alerts_new or 0 }}</td><td class="num">{{ r.alerts_sent or 0 }}</td><td>{{ r.status }}</td></tr>{% endfor %}
     </tbody></table>
     {% else %}<p class="muted">{{ t('settings.no_runs') }}</p>{% endif %}
+    {% endif %}
   </div>
 </div>
 {% endblock %}

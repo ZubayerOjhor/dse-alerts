@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     openai_compat_model: str = "llama3.1"
 
     # web app
-    app_secret_key: str = "change-me"
+    app_secret_key: str = ""          # blank: a random key per process (sessions end on restart); set it on a server
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     app_public_url: str = ""          # e.g. https://dse-alerts.fly.dev; used in emails and the hosting guide
@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Demo mode for a public instance: a "Try the demo" button logs visitors into a shared,
     # read-only account seeded with `dse demo seed`. Registration stays open.
     app_demo: bool = False
+    # Google Search Console "HTML tag" verification token, if you want to claim the site there
+    # (for example to ask for a Safe Browsing review). Rendered as a <meta> tag on every page.
+    app_google_site_verification: str = ""
 
     @property
     def market_db(self) -> Path:

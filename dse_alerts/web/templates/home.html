@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}dse-alerts{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="pitch">
+    <h1>{{ t('home.title') }}</h1>
+    <p class="lead">{{ t('home.lead') }}</p>
+    <div class="cta">
+      {% if demo_available %}<form method="post" action="/demo" class="inline"><button class="primary">{{ t('demo.try') }}</button></form>{% endif %}
+      <a class="btn" href="/register">{{ t('home.create') }}</a>
+      <a class="btn" href="/login">{{ t('login.title') }}</a>
+    </div>
+    <p class="muted small">{{ t('home.privacy') }}{% if demo_available %} {{ t('home.demo_note') }}{% endif %}</p>
+  </div>
+  <div class="tile">
+    <div class="label">DSEX</div>
+    <div class="value">{{ index.close | num(0) }}</div>
+    <div class="delta {{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }} {{ t('common.today') }}</div>
+    <div class="note">{{ index.ret_20 | pct }} {{ t('common.over_20') }}</div>
+    <div class="note">{{ t('dash.latest_session') }} {{ market.last_session or t('dash.no_data') }}</div>
+  </div>
+</section>
+
+<div class="grid cols-3 steps">
+  {% for n in [1, 2, 3] %}
+  <div class="card"><h3>{{ t('home.step' ~ n ~ '_t') }}</h3><p>{{ t('home.step' ~ n ~ '_b') }}</p></div>
+  {% endfor %}
+</div>
+
+<h2 style="margin:4px 0 10px">{{ t('market.title') }}</h2>
+<div class="grid cols-2">
+  <div class="card">
+    <h2>{{ t('market.sectors') }}</h2>
+    {% if board %}
+    <div class="board">
+      {% for s in board %}
+      {% set m = s.ret_1 or 0 %}
+      {% set cls = 'up3' if m > 0.03 else 'up2' if m > 0.012 else 'up1' if m > 0.002 else 'dn3' if m < -0.03 else 'dn2' if m < -0.012 else 'dn1' if m < -0.002 else '' %}
+      <div class="cell {{ cls }}" title="{{ t('market.up_down', up=s.up | int, down=s.down | int) }}">
+        <div class="sector">{{ s.sector }}</div>
+        <div><div class="move">{{ s.ret_1 | pct }}</div><div class="n">{{ t('market.sector_cell', n=s.n) }}</div></div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="help">{{ t('home.traded_only') }}</p>
+    {% else %}<p class="muted">{{ t('dash.no_data') }}</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>{{ t('market.movers') }}</h2>
+    <div class="movers">
+      {% for side in ['up', 'down'] %}
+      <div>
+        <h3>{{ t('market.risers') if side == 'up' else t('market.fallers') }}</h3>
+        <table class="compact"><tbody>
+        {% for r in movers[side] %}
+        <tr><td><strong>{{ r.symbol }}</strong><div class="muted small name" style="max-width:130px" title="{{ r.name or '' }}">{{ r.name or '' }}</div></td>
+            <td class="num">{{ r.close | num }}</td><td class="num {{ 'up' if r.ret_1 > 0 else 'down' if r.ret_1 < 0 else 'flat' }}">{{ r.ret_1 | pct }}</td></tr>
+        {% endfor %}
+        </tbody></table>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>{{ t('home.what_t') }}</h2>
+  <ul class="features">
+    {% for n in [1, 2, 3, 4, 5] %}<li>{{ t('home.f' ~ n) }}</li>{% endfor %}
+  </ul>
+  <p class="help"><a href="/learn">{{ t('home.learn_link') }}</a> <a href="https://github.com/ZubayerOjhor/dse-alerts" rel="noopener">{{ t('home.source') }}</a></p>
+</div>
+{% endblock %}

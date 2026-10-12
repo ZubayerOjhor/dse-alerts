@@ -9,6 +9,11 @@ COPY calibration ./calibration
 COPY scripts ./scripts
 RUN pip install --no-cache-dir -e ".[web,ai]"
 
+# Run as an unprivileged user. The data volume must be writable by uid 1000: a fresh volume
+# inherits it from here, an existing one needs `chown -R 1000:1000` once (scripts/vm-setup.sh does it).
+RUN useradd --system --uid 1000 --create-home app && mkdir -p /data && chown app:app /data /app
+USER app
+
 VOLUME ["/data"]
 EXPOSE 8000
 

@@ -98,3 +98,38 @@ the service will miss the 16:30 run, so use a plan that keeps it awake.
 * `sudo docker compose exec web dse alerts run --dry-run` (Fly: `fly ssh console -C "dse alerts run --dry-run"`) shows what today's run would send.
 * `dse demo seed --reset` rebuilds the demo account if a visitor somehow changed it, and
   runs harmlessly every container start (the scheduler calls it).
+* **Email and Telegram for other people's accounts.** A web sign-up confirms its alert
+  address through an emailed link before anything is sent there, and verifies a Telegram
+  chat by sending a code to the bot. Accounts you create yourself with `dse alerts init`
+  are trusted as they are; `dse alerts confirm-email` and `dse alerts set-password` cover
+  the rest.
+
+## If the browser calls the site dangerous
+
+Google Safe Browsing sometimes flags a brand-new site that shows a password form on a
+shared hosting name (`*.cloudapp.azure.com`, `*.sslip.io`, `*.trycloudflare.com` and the
+like), because phishing kits live on the same domains. Chrome then shows a red
+"Dangerous site" page. The site is not compromised; the classifier has nothing else to go
+on. Three things clear it, in order of effect:
+
+1. **Serve content, not a login form, on the front page.** dse-alerts does this: visitors
+   see the market board, the explanation and a "Try the demo" button; the password form is
+   one click away on `/login`.
+2. **Claim the site in Google Search Console and ask for a review.** Put the "HTML tag"
+   token Search Console gives you in `.env` as `APP_GOOGLE_SITE_VERIFICATION=...`, restart
+   (`sudo docker compose --profile https up -d`), verify, then open *Security issues* and
+   press *Request review*. Reviews on a site that shows what it is usually clear in a day
+   or two. Anyone can also file the short form at
+   <https://safebrowsing.google.com/safebrowsing/report_error/> without an account.
+3. **Use your own hostname.** The flag follows the exact host name, and a name you own on a
+   domain that nobody else can register under is much less likely to be flagged again. The
+   GitHub Student Developer Pack includes a free year of a `.tech` domain and one from
+   Name.com besides the Namecheap `.me`; any registrar's cheapest domain works too. Point an
+   A record at the machine, set `DOMAIN` and `APP_PUBLIC_URL` in `.env` and restart; Caddy
+   fetches the certificate.
+
+On Azure the DNS label of the public IP can also be changed to a fresh name in the portal
+(*Public IP address > Configuration > DNS name label*) or with
+`az network public-ip update -g dse-alerts -n dse-alertsPublicIP --dns-name <new-label>`,
+then update `DOMAIN` and `APP_PUBLIC_URL` in `.env` and restart. That sidesteps the old
+flag immediately, while the review of the old name proceeds.

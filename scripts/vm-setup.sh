@@ -60,6 +60,9 @@ fi
 echo "== Start (web + scheduler + HTTPS)"
 sudo docker compose --profile https up -d --build
 DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
+echo "== Data volume owned by the container's unprivileged user"
+sudo docker volume create dse-alerts_dse-data >/dev/null
+sudo docker run --rm -v dse-alerts_dse-data:/data alpine chown -R 1000:1000 /data
 echo
 echo "Up. Open https://$DOMAIN in a few minutes (the certificate is issued on first visit)."
 echo "The first boot downloads the market archive and builds features, 10-20 minutes:"

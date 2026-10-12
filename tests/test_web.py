@@ -52,7 +52,7 @@ def _csrf(client):
 
 def test_first_visit_goes_to_register_then_dashboard(client):
     assert client.get("/login").headers["location"] == "/register"
-    assert client.get("/").headers["location"] == "/login"
+    assert client.get("/").headers["location"] == "/register"
     _register(client)
     r = client.get("/")
     assert r.status_code == 200 and "Overview" in r.text and "DSEX" in r.text
@@ -120,7 +120,9 @@ def test_portfolio_page_with_holdings(env, tmp_path):
 def test_login_logout_and_bad_password(client):
     _register(client)
     client.post("/logout")
-    assert client.get("/").headers["location"] == "/login"
+    home = client.get("/")
+    assert home.status_code == 200 and "Create a free account" in home.text and 'type="password"' not in home.text
+    assert client.get("/portfolio").headers["location"] == "/login"
     assert "Wrong email" in client.post("/login", data={"email": "me@example.com", "password": "nope"}).text
     assert client.post("/login", data={"email": "me@example.com", "password": "correct horse"}).status_code == 303
     assert client.get("/").status_code == 200
@@ -192,7 +194,8 @@ def test_demo_mode_is_read_only(tmp_path, env):
     assert demo.post("/settings", data={"csrf": csrf, "alert_to": "x@y.z", "lang": "bn"}).status_code == 403
     assert demo.post("/watchlist/remove", data={"symbol": "GP", "csrf": csrf}).status_code == 403
     assert [i["symbol"] for i in db.items(uid)] == ["GP"]          # nothing changed
-    assert demo.post("/alerts/check", data={"csrf": csrf}).status_code == 303   # reading is fine
+    assert demo.post("/alerts/check", data={"csrf": csrf}).status_code == 403   # it records alerts, so it is a write
+    assert demo.get("/settings").status_code == 200
     # the demo address cannot be registered or logged into with a password
     assert "already has an account" in demo.post("/register", data={"email": DEMO_EMAIL, "password": "longenough"}).text
     assert "Wrong email" in demo.post("/login", data={"email": DEMO_EMAIL, "password": "anything"}).text
@@ -279,3 +282,105 @@ def test_overview_market_section(env):
     r = client.get("/").text
     assert "Market today" in r and "Telecom" in r and "Biggest moves" in r and "Upcoming record dates" in r
 
+
+
+def test_security_headers_and_cookie_flags(client):
+    r = client.get("/learn")
+    assert r.status_code == 200                                   # public, no account needed
+    assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert r.headers["x-content-type-options"] == "nosniff" and "referrer-policy" in r.headers
+    r = client.post("/register", data={"email": "a@example.com", "password": "correct horse"}, headers={"x-forwarded-proto": "https"})
+    assert "Secure" in r.headers["set-cookie"] and "HttpOnly" in r.headers["set-cookie"]
+    r = client.get("/lang/bn", headers={"referer": "https://evil.example/phish"})
+    assert r.headers["location"] == "/phish"                   # the path is kept, the foreign host is dropped
+    r = client.get("/lang/en", headers={"referer": "http://testserver/find?preset=low"})
+    assert r.headers["location"] == "/find?preset=low"
+    assert client.get("/demo").status_code == 405                 # POST only: a link cannot swap someone's session
+    assert client.post("/login", data={"email": "a@example.com", "password": "correct horse"},
+                       headers={"origin": "https://evil.example"}).status_code == 400
+
+
+def test_login_rate_limit_and_password_change_signs_other_sessions_out(env):
+    client, _db = env
+    _register(client)
+    other = TestClient(client.app, follow_redirects=False)
+    assert other.post("/login", data={"email": "me@example.com", "password": "correct horse"}).status_code == 303
+    assert other.get("/portfolio").status_code == 200
+    csrf = _csrf(client)
+    r = client.post("/settings", data={"csrf": csrf, "alert_to": "me@example.com", "lang": "en", "password": "new password 1"})
+    assert r.status_code == 303
+    assert client.get("/portfolio").status_code == 200           # the changing browser stays signed in
+    assert other.get("/portfolio").headers["location"] == "/login"   # the other one is out
+    assert "Wrong email" in other.post("/login", data={"email": "me@example.com", "password": "correct horse"}).text
+    for _ in range(10):
+        other.post("/login", data={"email": "me@example.com", "password": "still wrong"})
+    r = other.post("/login", data={"email": "me@example.com", "password": "new password 1"})
+    assert r.status_code == 429 and "Too many attempts" in r.text
+    assert "already has an account" in client.post("/register", data={"email": "me@example.com", "password": "whatever12"}).text
+    assert "Check the email" in client.post("/register", data={"email": "not-an-email", "password": "whatever12"}).text
+    assert client.post("/register", data={"email": "b@example.com", "password": "x" * 200}).status_code == 200
+
+
+def test_alert_destinations_need_confirmation(env, monkeypatch):
+    from dse_alerts import config
+    from dse_alerts.notify import deliver
+
+    client, db = env
+    sent = []
+    monkeypatch.setattr(config.Settings, "email_enabled", property(lambda self: True))
+    monkeypatch.setattr(deliver, "send_plain_email", lambda settings, to, subject, body: sent.append((to, body)) or True)
+    _register(client)                                              # the first account is the operator's: confirmed as is
+    assert db.user("me@example.com")["email_confirmed"] == "me@example.com" and not sent
+    client.post("/logout")
+    second = TestClient(client.app, follow_redirects=False)
+    second.post("/register", data={"email": "two@example.com", "password": "correct horse", "alert_to": "friend@example.com"})
+    u = db.user("two@example.com")
+    assert u["alert_email"] == "friend@example.com" and u["email_confirmed"] is None
+    assert sent and sent[-1][0] == "friend@example.com"
+    assert "not confirmed yet" in second.get("/settings").text
+    link = sent[-1][1].split("http://127.0.0.1:8000")[1].split()[0]
+    assert second.get(link).status_code == 303
+    assert db.user("two@example.com")["email_confirmed"] == "friend@example.com"
+    assert "is confirmed" in second.get("/settings").text
+    assert second.get("/confirm/not-a-token").status_code == 400
+    # Telegram: a chat id is verified by sending a code to the bot
+    monkeypatch.setattr(config.Settings, "telegram_enabled", property(lambda self: True))
+    monkeypatch.setattr(deliver, "telegram_bot_name", lambda settings: "dse_bot")
+    csrf = second.get("/").text.split('name="csrf" value="')[1].split('"')[0]
+    assert "digits only" in second.post("/settings", data={"csrf": csrf, "alert_to": "friend@example.com", "lang": "en", "telegram_chat_id": "abc"}).text
+    second.post("/settings", data={"csrf": csrf, "alert_to": "friend@example.com", "lang": "en", "telegram_chat_id": "12345"})
+    u = db.user("two@example.com")
+    assert u["telegram_chat_id"] == "12345" and u["telegram_confirmed"] is None and u["telegram_code"]
+    page = second.get("/settings").text
+    assert u["telegram_code"] in page and "@dse_bot" in page
+    monkeypatch.setattr(deliver, "telegram_messages", lambda settings: [{"chat_id": "999", "text": u["telegram_code"]}])
+    second.post("/telegram/verify", data={"csrf": csrf})
+    assert db.user("two@example.com")["telegram_confirmed"] is None     # right code, wrong chat
+    monkeypatch.setattr(deliver, "telegram_messages", lambda settings: [{"chat_id": "12345", "text": "hi " + u["telegram_code"].lower()}])
+    second.post("/telegram/verify", data={"csrf": csrf})
+    assert db.user("two@example.com")["telegram_confirmed"] == "12345"
+    assert "is verified" in second.get("/settings").text
+
+
+def test_ai_notes_are_kept_per_language(env, monkeypatch):
+    import datetime as dt
+
+    from dse_alerts import config
+    from dse_alerts.ai import digest as ai
+    from dse_alerts.rules import Alert
+
+    client, db = env
+    _register(client)
+    uid = db.user("me@example.com")["id"]
+    last = client.get("/").text.split("<strong>")[1].split("</strong>")[0]
+    db.record_alerts(uid, [Alert(symbol="GP", rule_id="big_rise", date=dt.date.fromisoformat(last), headline="GP up",
+                                 detail="d", severity="notable", evidence={"ret": 0.1})])
+    calls = []
+    monkeypatch.setattr(config.Settings, "ai_enabled", property(lambda self: True))
+    monkeypatch.setattr(ai, "write_digest_detailed", lambda s, session, alerts, symbols, ev, lang="en": (calls.append(lang), (f"note-{lang}", "fake"))[1])
+    monkeypatch.setattr(ai, "load_rule_evidence", lambda s: {})
+    for code in ("en", "bn", "en", "bn", "en"):
+        client.get(f"/lang/{code}")
+        assert f"note-{code}" in client.get("/").text
+    assert calls == ["en", "bn"]                                    # one provider call per language, never rewritten
+    assert db.digest_for(uid, last, "en")["text"] == "note-en" and db.digest_for(uid, last, "bn")["text"] == "note-bn"

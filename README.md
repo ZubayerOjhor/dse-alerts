@@ -50,6 +50,12 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
   from the history, every rule has a backtest, and the system scores its own alerts.
 * **Optional extras stay optional.** Email needs an SMTP login; Telegram a bot token; the
   AI summary an API key. Without any of them, alerts still run and land in `data/outbox/`.
+* **Safe to leave on the internet.** Passwords are argon2id hashes; sessions are signed,
+  HttpOnly, Secure cookies that a password change invalidates; every form carries a CSRF
+  token; login and sign-up are rate limited; every response carries a Content Security
+  Policy and the usual hardening headers; the container runs unprivileged. Alerts are only
+  ever emailed or sent on Telegram to a destination the user has confirmed, so nobody can
+  point the operator's mail account or bot at a stranger.
 
 ## Screens
 

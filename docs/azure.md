@@ -111,6 +111,14 @@ charged without you adding a card, but the machine stops, so move the data out f
 ## Later
 
 * **Update to a new version:** `cd ~/dse-alerts && git pull && sudo docker compose --profile https up -d --build`.
+  Versions from October 2026 on run the containers as an unprivileged user; a data volume
+  created before that needs its ownership fixed once before the update:
+  `sudo docker run --rm -v dse-alerts_dse-data:/data alpine chown -R 1000:1000 /data`.
+* **"Dangerous site" in Chrome:** see *If the browser calls the site dangerous* in
+  [hosting.md](hosting.md). Short version: the front page now shows content rather than a
+  login form, you can claim the site in Google Search Console with
+  `APP_GOOGLE_SITE_VERIFICATION` in `.env` and ask for a review, and a fresh DNS label or
+  your own domain sidesteps the old flag at once.
 * **A real domain for free:** the pack includes a one-year `.me` from Namecheap (and others
   from Name.com and .TECH). Point an A record at the public IP, set
   `DOMAIN=alerts.yourname.me` and `APP_PUBLIC_URL=https://alerts.yourname.me` in `.env`,

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}dse-alerts{% endblock %}</title>
 <script>try{var t=localStorage.getItem('dse-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+{% if settings.app_google_site_verification %}<meta name="google-site-verification" content="{{ settings.app_google_site_verification }}">{% endif %}
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17l5-6 4 4 9-10' fill='none' stroke='%232a78d6' stroke-width='3'/%3E%3C/svg%3E">
 </head>
@@ -23,7 +24,12 @@
     <a href="/learn" class="{{ 'active' if active == 'learn' }}">{{ t('nav.learn') }}</a>
     <a href="/settings" class="{{ 'active' if active == 'settings' }}">{{ t('nav.settings') }}</a>
   </nav>
-  {% else %}<span style="flex:1"></span>{% endif %}
+  {% else %}
+  <nav class="main">
+    <a href="/" class="{{ 'active' if active == 'home' }}">{{ t('nav.home') }}</a>
+    <a href="/learn" class="{{ 'active' if active == 'learn' }}">{{ t('nav.learn') }}</a>
+  </nav>
+  {% endif %}
   <div class="right">
     <div class="lang" title="{{ t('lang.switch') }}" aria-label="{{ t('lang.switch') }}">
       <a href="/lang/en" class="{{ 'active' if lang == 'en' }}" lang="en">EN</a><a href="/lang/bn" class="{{ 'active' if lang == 'bn' }}" lang="bn">বাং</a>
@@ -34,7 +40,7 @@
       <button type="button" data-theme-pick="midnight" aria-label="{{ t('theme.midnight') }}"></button>
       <button type="button" data-theme-pick="terminal" aria-label="{{ t('theme.terminal') }}"></button>
     </div>
-    {% if user %}<form method="post" action="/logout" class="inline"><button class="link">{{ t('nav.logout') }}</button></form>{% endif %}
+    {% if user %}<form method="post" action="/logout" class="inline"><button class="link">{{ t('nav.logout') }}</button></form>{% else %}<a class="btn" href="/login">{{ t('login.title') }}</a>{% endif %}
   </div>
 </header>
 {% if demo %}<div class="banner demo">{{ t('demo.banner') }} <a href="/register">{{ t('demo.banner_link') }}</a>.</div>{% endif %}

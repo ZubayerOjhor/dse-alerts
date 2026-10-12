@@ -8,7 +8,7 @@
     <div class="sub">{{ t('dash.latest_session') }} <strong>{{ market.last_session or t('dash.no_data') }}</strong>
       {% if market.stale %}<span class="badge warn">{{ t('dash.stale') }} <code>dse data refresh</code></span>{% endif %}</div>
   </div>
-  <form method="post" action="/alerts/check" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>{{ t('dash.check_now') }}</button></form>
+  {% if not demo %}<form method="post" action="/alerts/check" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>{{ t('dash.check_now') }}</button></form>{% endif %}
 </div>
 
 <div class="tiles">

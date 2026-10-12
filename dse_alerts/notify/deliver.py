@@ -88,6 +88,50 @@ def send_telegram(settings: Settings, chat_id: str, text: str, transport=None) -
     return ok
 
 
+def telegram_messages(settings: Settings, transport=None) -> list[dict]:
+    """Every recent message the bot received: [{chat_id, text}], oldest first."""
+    if not settings.telegram_enabled:
+        return []
+    import httpx
+
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/getUpdates"
+    try:
+        with httpx.Client(timeout=30.0, transport=transport) as c:
+            r = c.get(url)
+        data = r.json().get("result", []) if r.status_code == 200 else []
+    except Exception as e:  # noqa: BLE001
+        log.error("telegram getUpdates failed: %s", e)
+        return []
+    out = []
+    for u in data:
+        m = u.get("message") or u.get("channel_post") or {}
+        chat = m.get("chat") or {}
+        if chat.get("id"):
+            out.append({"chat_id": str(chat["id"]), "text": m.get("text") or ""})
+    return out
+
+
+_BOT_NAME: dict[str, str] = {}
+
+
+def telegram_bot_name(settings: Settings, transport=None) -> str:
+    """The bot's @username (cached per token), for the settings page instructions."""
+    if not settings.telegram_enabled:
+        return ""
+    token = settings.telegram_bot_token
+    if token not in _BOT_NAME:
+        import httpx
+
+        try:
+            with httpx.Client(timeout=15.0, transport=transport) as c:
+                r = c.get(f"https://api.telegram.org/bot{token}/getMe")
+            _BOT_NAME[token] = r.json().get("result", {}).get("username", "") if r.status_code == 200 else ""
+        except Exception as e:  # noqa: BLE001
+            log.error("telegram getMe failed: %s", e)
+            return ""
+    return _BOT_NAME[token]
+
+
 def telegram_updates(settings: Settings, transport=None) -> list[dict]:
     """Recent chats that messaged the bot: [{chat_id, name, text}], for discovering one's chat id."""
     if not settings.telegram_enabled:
@@ -111,6 +155,27 @@ def telegram_updates(settings: Settings, transport=None) -> list[dict]:
             name = " ".join(x for x in (chat.get("first_name"), chat.get("last_name"), chat.get("title"), chat.get("username")) if x)
             out.append({"chat_id": str(chat["id"]), "name": name, "text": (m.get("text") or "")[:60]})
     return out
+
+
+def send_plain_email(settings: Settings, to: str, subject: str, body: str) -> bool:
+    """A short text-only message (address confirmation). Returns True on success."""
+    if not settings.email_enabled:
+        return False
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.alert_from or settings.smtp_user
+    msg["To"] = to
+    msg.set_content(body)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
+            s.ehlo()
+            s.starttls()
+            s.login(settings.smtp_user, settings.smtp_password)
+            s.send_message(msg)
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.error("email to %s failed: %s", to, e)
+        return False
 
 
 def send_email(settings: Settings, to: str, ctx: DeliveryContext) -> bool:

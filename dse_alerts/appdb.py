@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS digests (
     provider TEXT,                     -- groq:llama-3.3-70b-versatile, anthropic:claude-fable-5-1, ...
     lang TEXT NOT NULL DEFAULT 'en',
     created_at TEXT NOT NULL,
-    UNIQUE (user_id, session_date)
+    UNIQUE (user_id, session_date, lang)
 );
 CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY,
@@ -103,6 +103,14 @@ MIGRATIONS = [
     ("users", "telegram_chat_id", "ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
     ("watchlist_items", "kind", "ALTER TABLE watchlist_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'watch'"),  # watch | target
     ("users", "lang", "ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'"),   # en | bn
+    # Mail and Telegram only go to a confirmed destination. Rows that exist before this column
+    # was added were created by the operator (or by the operator's own sign-up), so they keep
+    # working; every later web sign-up confirms its address through an emailed link.
+    ("users", "email_confirmed", ("ALTER TABLE users ADD COLUMN email_confirmed TEXT;\n"
+                                  "UPDATE users SET email_confirmed = coalesce(alert_email, email)")),
+    ("users", "telegram_confirmed", ("ALTER TABLE users ADD COLUMN telegram_confirmed TEXT;\n"
+                                     "UPDATE users SET telegram_confirmed = telegram_chat_id")),
+    ("users", "telegram_code", "ALTER TABLE users ADD COLUMN telegram_code TEXT"),
 ]
 
 # The shared read-only account used when APP_DEMO=1 (see `dse demo seed`).
@@ -129,7 +137,20 @@ class AppDB:
             for table, column, ddl in MIGRATIONS:
                 cols = {r["name"] for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
                 if column not in cols:
-                    con.execute(ddl)
+                    for stmt in ddl.split(";\n"):
+                        con.execute(stmt)
+            # one AI note per language, so switching EN / BN never rewrites a stored note
+            ddl = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'digests'").fetchone()
+            if ddl and "session_date, lang)" not in ddl["sql"]:
+                con.executescript("""
+                    CREATE TABLE digests_v2 (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+                        session_date TEXT NOT NULL, text TEXT NOT NULL, provider TEXT, lang TEXT NOT NULL DEFAULT 'en',
+                        created_at TEXT NOT NULL, UNIQUE (user_id, session_date, lang));
+                    INSERT INTO digests_v2 (id, user_id, session_date, text, provider, lang, created_at)
+                        SELECT id, user_id, session_date, text, provider, lang, created_at FROM digests;
+                    DROP TABLE digests;
+                    ALTER TABLE digests_v2 RENAME TO digests;
+                """)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -170,7 +191,8 @@ class AppDB:
             return con.execute("SELECT * FROM users ORDER BY id").fetchall()
 
     def update_user(self, user_id: int, **fields: Any) -> None:
-        allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id", "lang"}
+        allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id", "lang",
+                   "email_confirmed", "telegram_confirmed", "telegram_code"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return
@@ -332,18 +354,22 @@ class AppDB:
             con.execute(
                 """
                 INSERT INTO digests (user_id, session_date, text, provider, lang, created_at) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT (user_id, session_date) DO UPDATE SET
-                    text = excluded.text, provider = excluded.provider, lang = excluded.lang, created_at = excluded.created_at
+                ON CONFLICT (user_id, session_date, lang) DO UPDATE SET
+                    text = excluded.text, provider = excluded.provider, created_at = excluded.created_at
                 """,
                 (user_id, s, text, provider, lang, _now()),
             )
 
-    def digest_for(self, user_id: int, session: dt.date | str | None) -> sqlite3.Row | None:
+    def digest_for(self, user_id: int, session: dt.date | str | None, lang: str | None = None) -> sqlite3.Row | None:
+        """The note for a session in ``lang``, or the most recent one in any language."""
         if session is None:
             return None
         s = session.isoformat() if isinstance(session, dt.date) else str(session)
         with self.connect() as con:
-            return con.execute("SELECT * FROM digests WHERE user_id = ? AND session_date = ?", (user_id, s)).fetchone()
+            if lang:
+                return con.execute("SELECT * FROM digests WHERE user_id = ? AND session_date = ? AND lang = ?", (user_id, s, lang)).fetchone()
+            return con.execute("SELECT * FROM digests WHERE user_id = ? AND session_date = ? ORDER BY created_at DESC LIMIT 1",
+                               (user_id, s)).fetchone()
 
     def digests(self, user_id: int, limit: int = 30) -> list[sqlite3.Row]:
         with self.connect() as con:

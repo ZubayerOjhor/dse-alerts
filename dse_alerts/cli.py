@@ -289,6 +289,7 @@ def import_watchlist(path: str = typer.Argument("watchlist.json")):
         uid = db.ensure_user(u["email"], alert_email=u.get("alert_to"))
         if u.get("alert_to"):
             db.update_user(uid, alert_email=u["alert_to"])
+        db.update_user(uid, email_confirmed=u.get("alert_to") or u["email"])   # the operator vouches for it
         wl = db.ensure_watchlist(uid, u.get("watchlist", "My watchlist"))
         symbols = u.get("symbols", {})
         if isinstance(symbols, list):
@@ -318,8 +319,39 @@ def init(email: str = typer.Option(..., help="Your email; also the default alert
     uid = db.ensure_user(email, alert_email=alert_to)
     if alert_to:
         db.update_user(uid, alert_email=alert_to)
+    db.update_user(uid, email_confirmed=alert_to or email)   # the operator vouches for it
     db.ensure_watchlist(uid)
     rprint(f"user #{uid} {email} -> alerts to {alert_to or email}")
+
+
+@alerts_app.command(name="set-password")
+def set_password(email: str = typer.Argument(..., help="An existing user"),
+                 password: str = typer.Option(..., prompt=True, hide_input=True, confirmation_prompt=True)):
+    """Set or reset the web password of a user created here (the web sign-up refuses existing emails)."""
+    from dse_alerts.web.auth import PASSWORD_MAX_LENGTH, hash_password
+
+    db = _appdb()
+    u = db.user(email.strip().lower())
+    if not u:
+        rprint(f"[red]no user {email}[/red]")
+        raise typer.Exit(1)
+    if not 8 <= len(password) <= PASSWORD_MAX_LENGTH:
+        rprint("[red]use 8 to 128 characters[/red]")
+        raise typer.Exit(1)
+    db.update_user(u["id"], password_hash=hash_password(password))
+    rprint(f"password set for {u['email']}; other sessions are signed out")
+
+
+@alerts_app.command(name="confirm-email")
+def confirm_email(email: str = typer.Argument(..., help="An existing user")):
+    """Mark a user's alert address as confirmed without the emailed link."""
+    db = _appdb()
+    u = db.user(email.strip().lower())
+    if not u:
+        rprint(f"[red]no user {email}[/red]")
+        raise typer.Exit(1)
+    db.update_user(u["id"], email_confirmed=u["alert_email"] or u["email"])
+    rprint(f"{u['alert_email'] or u['email']} confirmed")
 
 
 @alerts_app.command()
@@ -407,10 +439,14 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
         p = deliver.to_outbox(s.outbox_dir, r.email, ctx)
         rprint(f"outbox: {p}")
         delivered = False
-        if email and r.new_alerts and s.email_enabled and deliver.send_email(s, r.alert_email, ctx):
+        # only confirmed destinations: a web sign-up cannot point the operator's mail or bot at a stranger
+        confirmed = u is not None and dict(u).get("email_confirmed") == r.alert_email
+        if email and r.new_alerts and s.email_enabled and not confirmed:
+            rprint(f"[yellow]{r.alert_email} is not confirmed; not emailed[/yellow]")
+        if email and r.new_alerts and s.email_enabled and confirmed and deliver.send_email(s, r.alert_email, ctx):
             delivered = True
             rprint(f"emailed {r.alert_email}")
-        chat = (dict(u).get("telegram_chat_id") if u else None) or s.telegram_chat_id
+        chat = (dict(u).get("telegram_confirmed") if u else None) or (s.telegram_chat_id if u and u["id"] == 1 else None)
         if r.new_alerts and s.telegram_enabled and chat and deliver.send_telegram(s, chat, deliver.telegram_text(session, r.new_alerts, summary, ctx)):
             delivered = True
             rprint(f"telegram -> chat {chat}")
