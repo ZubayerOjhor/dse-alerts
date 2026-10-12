@@ -245,6 +245,16 @@ def _psi_news(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     )
 
 
+def _day(v) -> str:
+    """A date for a sentence: '2026-10-15', never '2026-10-15 00:00:00' or 'NaT'."""
+    if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "":
+        return "-"
+    try:
+        return str(pd.Timestamp(v).date())
+    except (ValueError, TypeError):
+        return str(v)
+
+
 def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     if ctx.dividends.empty:
         return None
@@ -262,7 +272,7 @@ def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     return Alert(
         symbol=ctx.row["symbol"], rule_id="record_date", date=ctx.as_of,
         headline=f"{ctx.row['symbol']} record date on {pd.Timestamp(d['record_date']).date()}: {str(d['dividend'])[:60]}",
-        detail=f"Year end {d.get('year_end', '')}; AGM {d.get('agm_date', '')}. Declared {d.get('declared_on', '')}.",
+        detail=f"Year end {d.get('year_end', '')}; AGM {_day(d.get('agm_date'))}. Declared {_day(d.get('declared_on'))}.",
         severity="info",
         evidence={"record_date": str(pd.Timestamp(d["record_date"]).date()), "dividend": str(d["dividend"])},
     )
