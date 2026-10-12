@@ -168,8 +168,9 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         resp = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             resp.headers.setdefault(k, v)
-        if head:
-            return Response(status_code=resp.status_code, headers=dict(resp.headers), media_type=resp.media_type)
+        if head:   # same headers, no body; the body's Content-Length must go with it
+            headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
+            return Response(status_code=resp.status_code, headers=headers, media_type=resp.media_type)
         return resp
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
