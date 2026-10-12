@@ -37,8 +37,8 @@ EVENTS = {
     "volume_3x_and_up_5pct": "vol_ratio_20 >= 3 AND ret_1 >= 0.05",
     "volume_3x_and_down_5pct": "vol_ratio_20 >= 3 AND ret_1 <= -0.05",
     "volume_5x": "vol_ratio_20 >= 5",
-    "new_250d_high": "close > high_250",
-    "new_250d_low": "close < low_250",
+    "new_250d_high": "aclose > high_250",
+    "new_250d_low": "aclose < low_250",
     "beats_index_by_5pct": "ret_1 - dsex_ret_1 >= 0.05",
     "lags_index_by_5pct": "ret_1 - dsex_ret_1 <= -0.05",
 }
@@ -67,16 +67,24 @@ def load_calibration(settings) -> dict:
 
 
 def rule_evidence(settings) -> dict[str, dict]:
-    """Backtest numbers keyed by rule id, for the rules page, the scorecard and the AI note."""
-    events = {e["event"]: e for e in load_calibration(settings).get("event_stats", []) if "event" in e}
-    out = {}
-    for rule_id, event in EVENT_FOR_RULE.items():
-        if event in events:
-            out[rule_id] = events[event]
-    return out
+    """Backtest numbers keyed by rule id, for the rules page, the scorecard and the AI note.
+    These come from ``rule_stats``: the study of each rule's own predicate with its default
+    parameters, so "times a year" and "what followed" describe the alert that actually fires.
+    Every row also carries the base rate over all sessions (``base_fwd20_positive_share`` and
+    ``base_fwd20_median``) so a share like 47% can be read against the 44% of any day."""
+    cal = load_calibration(settings)
+    out = {r["event"]: r for r in cal.get("rule_stats", []) if "event" in r}
+    if out:
+        return out
+    # an older study without rule_stats: fall back to the nearest candidate condition
+    events = {e["event"]: e for e in cal.get("event_stats", []) if "event" in e}
+    return {rule_id: events[event] for rule_id, event in EVENT_FOR_RULE.items() if event in events}
 
 
-# which event of the study each rule corresponds to (the rule's default parameters)
+# rules whose forward returns mean nothing: a stock with no trades has no 20-session move
+UNSTUDIED = {"illiquid"}
+
+# the nearest candidate condition for each rule, used only for studies made before rule_stats existed
 EVENT_FOR_RULE = {
     "big_drop": "drop_10d_ge_10pct", "big_rise": "rise_10d_ge_15pct",
     "upper_circuit": "upper_circuit", "lower_circuit": "lower_circuit",
@@ -147,9 +155,14 @@ def run(store: MarketStore, since: dt.date = DEFAULT_SINCE) -> dict:
         )
         symbol_stats = con.execute("SELECT * FROM symbol_stats ORDER BY symbol").df()
 
+    # the rules as shipped, with their default parameters: what the Rules page describes
+    from dse_alerts.rules import RULES
+
+    rule_stats = run_events(store, {r.id: r.predicate_sql for r in RULES if r.predicate_sql and r.id not in UNSTUDIED}, since)
+
     return {
         "since": since, "sessions": n, "symbols": syms, "first": a, "last": b,
-        "category_stats": category, "event_stats": events, "symbol_stats": symbol_stats,
+        "category_stats": category, "event_stats": events, "rule_stats": rule_stats, "symbol_stats": symbol_stats,
     }
 
 
@@ -263,6 +276,22 @@ def write_report(result: dict, path: Path, json_path: Path | None = None) -> Non
         "produces about 5 of these alerts a year. Forward returns are what happened next on average, not a "
         "prediction; they are shown so that each rule can be judged on evidence."),
         "",
+        "## The rules as shipped",
+        "",
+        ("The same study for each rule's own test with its default parameters, which is what the Rules page "
+        "and the AI note quote. Rules that fire once per episode are counted once per episode here too; "
+        "stock-specific rules use each stock's own percentiles."),
+        "",
+        "| Rule | Fires per 250 sessions (per stock) | Events | Fwd 5 median | Fwd 20 median | Fwd 20 mean | Fwd 20 positive |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in result.get("rule_stats", pd.DataFrame()).itertuples():
+        lines.append(
+            f"| `{r.event}` | {r.per_250_sessions:.2f} | {r.n:,} | {_pct(r.fwd5_median)} | {_pct(r.fwd20_median)} | "
+            f"{_pct(r.fwd20_mean)} | {100*r.fwd20_positive_share:.0f}% |"
+        )
+    lines += [
+        "",
         "## Per-symbol baselines",
         "",
         ("Stored in the `symbol_stats` table: for every tradeable instrument, the standard deviation and 95th "
@@ -278,5 +307,6 @@ def write_report(result: dict, path: Path, json_path: Path | None = None) -> Non
             "first": str(result["first"]), "last": str(result["last"]),
             "category_stats": json.loads(cat.to_json(orient="records")),
             "event_stats": json.loads(ev.to_json(orient="records")),
+            "rule_stats": json.loads(result.get("rule_stats", pd.DataFrame()).to_json(orient="records")),
         }
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

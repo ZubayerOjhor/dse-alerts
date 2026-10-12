@@ -186,3 +186,67 @@ def test_web_reads_the_published_snapshot(tmp_path):
     assert writer.summary()["rows"] == 5 and reader.summary()["rows"] == 3   # readers see the published copy
     writer.snapshot()
     assert reader.summary()["rows"] == 5
+
+
+def test_backtest_compares_adjusted_with_adjusted(store):
+    """A flat stock with a bonus issue: the old study compared the printed close with an
+    adjusted range and counted about a hundred "new highs"; the rules' own predicates must
+    find none, and the study must be of those predicates."""
+    from dse_alerts.analysis import calibrate as cal
+
+    s, dates = store
+    row = _row(s, "ADJ", dates[301])
+    assert row["aclose"] == pytest.approx(row["close"] * row["adj_factor"]) and row["high_250_prev"] == pytest.approx(80.0)
+    assert abs(row["ret_60"]) < 1e-9 and abs(row["ret_250"]) < 1e-9
+    res = cal.run(s, dates[0])
+    stats = res["rule_stats"].set_index("event")
+    assert {"new_250d_high", "new_250d_low", "big_drop", "upper_circuit"} <= set(stats.index)
+    assert stats.loc["new_250d_high", "n"] == 0 and stats.loc["new_250d_low", "n"] == 0
+    with s.connect(read_only=True) as con:   # the mistake the reviewer found, kept here as a guard
+        assert con.execute("SELECT count(*) FROM features WHERE symbol = 'ADJ' AND close > high_250").fetchone()[0] > 50
+    assert "base_fwd20_positive_share" in stats.columns
+
+
+def test_symbol_page_moves_agree_with_the_overview(store):
+    from dse_alerts import evidence
+
+    s = store[0]
+    ev = evidence.evidence(s, "ADJ", None, None, None, pd.DataFrame(), pd.DataFrame())
+    assert abs(ev["ret_20"]) < 1e-9 and abs(ev["ret_60"]) < 1e-9 and abs(ev["ret_250"]) < 1e-9   # not -20% from the bonus
+    assert ev["high_250"] == pytest.approx(80.0) and ev["low_250"] == pytest.approx(80.0)        # on the printed scale
+    rows = evidence.target_rows(s, ["ADJ"])
+    assert abs(rows[0]["ret_60"]) < 1e-9 and abs(rows[0]["ret_250"]) < 1e-9
+    assert max(rows[0]["closes"]) - min(rows[0]["closes"]) < 1e-6                                 # no cliff in the sparkline
+
+
+def test_news_rank_matches_whole_words():
+    from dse_alerts.rules.catalog import NEWS_PRIORITY, news_rank
+
+    kinds = {i: k for i, (_n, k) in enumerate(NEWS_PRIORITY)}
+    assert kinds[news_rank("X: Purchase of Land")] == "deal"
+    assert kinds.get(news_rank("X: Update of Information regarding Bangladesh office")) == "routine"
+    assert kinds.get(news_rank("NAVANACNG: Board meeting")) == "meeting"        # "nav" must not match Navana
+    assert kinds[news_rank("X: NAV per share")] == "results"
+    assert kinds[news_rank("X: Suspension of trading")] == "routine"              # stems still match
+
+
+def test_note_is_skipped_for_routine_filings_and_speaks_in_words(monkeypatch):
+    from dse_alerts import config
+    from dse_alerts.ai import digest as ai
+    from dse_alerts.rules import Alert
+
+    routine = [Alert(symbol="GP", rule_id="psi_news", date=dt.date(2026, 10, 12), headline="GP filed price-sensitive information: Update of Information",
+                     detail="bank details", severity="info", evidence={"count": 1, "titles": ["GP: Update of Information"]})]
+    monkeypatch.setattr(config.Settings, "ai_enabled", property(lambda self: True))
+    monkeypatch.setattr(config.Settings, "ai_chain", lambda self: [{"name": "groq", "kind": "openai_compatible", "base_url": "x", "api_key": "k", "model": "m"}])
+    monkeypatch.setattr(ai, "_via_openai_compatible", lambda *a, **k: pytest.fail("no provider call for a routine-only session"))
+    assert ai.write_digest_detailed(config.Settings(app_secret_key="t"), dt.date(2026, 10, 12), routine, ["GP", "BRACBANK"], {}) == (None, None)
+
+    prompt = ai.build_prompt(dt.date(2026, 10, 12), routine, ["GP", "BRACBANK"],
+                             {"psi_news": {"n": 10, "per_250_sessions": 3.0, "fwd20_median": 0.01, "fwd20_positive_share": 0.47, "base_fwd20_positive_share": 0.439}})
+    assert '"session_day": "Monday 12 October 2026"' in prompt and '"stocks_with_no_alert": [\n  "BRACBANK"\n ]' in prompt
+    assert "filings since the previous session" in prompt and '"count"' not in prompt
+    assert '"share_that_rose_20_sessions_after_any_day": "44%"' in prompt
+    assert "Sunday to Thursday" not in prompt
+    problems = ai.check_note("On Sunday-Thursday 12 October GP filed, with a count of 1; most stocks traded within their usual daily limits.", prompt)
+    assert any("Sunday-Thursday" in p for p in problems) and any("a count of" in p for p in problems) and any("usual daily limits" in p for p in problems)

@@ -5,7 +5,7 @@
 <div class="page-head"><div><h1>{{ t('rules.title') }}</h1><div class="sub">{{ t('rules.sub') }}{% if study %} {{ t('rules.study', first=study.first, last=study.last, symbols=study.symbols) }}{% endif %}</div></div></div>
 <div class="card">
   <table>
-    <thead><tr><th>{{ t('common.rule') }}</th><th>{{ t('rules.meaning') }}</th><th>{{ t('rules.defaults') }}</th><th class="num" title="{{ t('help.fires') }}">{{ t('rules.fires') }}</th><th class="num" title="{{ t('help.median20') }}">{{ t('rules.median20') }}</th><th class="num" title="{{ t('help.rose') }}">{{ t('rules.positive') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.rule') }}</th><th>{{ t('rules.meaning') }}</th><th>{{ t('rules.defaults') }}</th><th class="num" title="{{ t('help.fires') }}">{{ t('rules.fires') }}</th><th class="num" title="{{ t('help.median20') }}">{{ t('rules.median20') }}</th><th class="num" title="{{ t('help.rose') }}">{{ t('rules.positive') }}{% if base %}<div class="muted small" style="font-weight:normal">{{ t('rules.any_day', pct=base.positive) }}</div>{% endif %}</th></tr></thead>
     <tbody>
     {% for r in rules %}
     {% set c = cal.get(r.id) %}
@@ -20,6 +20,6 @@
     {% endfor %}
     </tbody>
   </table>
-  <p class="help"><a href="/learn#rules">{{ t('help.rules_link') }}</a></p>
+  <p class="help">{% if base %}{{ t('rules.base_note', pct=base.positive, median=base.median | pct) }} {% endif %}<a href="/learn#rules">{{ t('help.rules_link') }}</a></p>
 </div>
 {% endblock %}

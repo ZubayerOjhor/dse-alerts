@@ -151,7 +151,10 @@ for that company. Three sessions in a row at the lower circuit is rare (once in 
 stock-years) and is followed by a median -6% over the next 20 sessions; three in a row at
 the upper circuit has a +21% *mean* but a +1% median, i.e. a few runaway pumps and many
 fades. All of it, with the forward-return evidence per rule: [docs/calibration.md](docs/calibration.md).
-Regenerate with `dse analysis calibrate` and `dse alerts backtest`.
+The study's last table runs each rule exactly as it ships, with its default settings and once
+per episode, and that is what the Rules page and the AI note quote; every "rose afterwards"
+share sits next to the 44% of any session, so it can be read. Regenerate with
+`dse analysis calibrate` and `dse alerts backtest`.
 
 ## Commands
 

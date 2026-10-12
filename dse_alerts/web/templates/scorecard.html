@@ -8,7 +8,7 @@
   <h2>{{ t('scorecard.by_rule') }}</h2>
   {% if by_rule %}
   <table>
-    <thead><tr><th>{{ t('common.rule') }}</th><th class="num">{{ t('scorecard.alerts') }}</th><th class="num" title="{{ t('help.episodes') }}">{{ t('scorecard.episodes') }}</th><th class="num">{{ t('scorecard.scored') }}</th><th class="num" title="{{ t('help.fwd5') }}">{{ t('scorecard.fwd5') }}</th><th class="num" title="{{ t('help.fwd20') }}">{{ t('scorecard.fwd20') }}</th><th class="num" title="{{ t('help.positive') }}">{{ t('scorecard.positive') }}</th><th class="num" title="{{ t('help.vs_dsex') }}">{{ t('scorecard.vs_dsex') }}</th><th class="num" title="{{ t('help.backtest') }}">{{ t('scorecard.backtest') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.rule') }}</th><th class="num">{{ t('scorecard.alerts') }}</th><th class="num" title="{{ t('help.episodes') }}">{{ t('scorecard.episodes') }}</th><th class="num">{{ t('scorecard.scored') }}</th><th class="num" title="{{ t('help.fwd5') }}">{{ t('scorecard.fwd5') }}</th><th class="num" title="{{ t('help.fwd20') }}">{{ t('scorecard.fwd20') }}</th><th class="num" title="{{ t('help.positive') }}">{{ t('scorecard.positive') }}{% if base %}<div class="muted small" style="font-weight:normal">{{ t('rules.any_day', pct=base.positive) }}</div>{% endif %}</th><th class="num" title="{{ t('help.vs_dsex') }}">{{ t('scorecard.vs_dsex') }}</th><th class="num" title="{{ t('help.backtest') }}">{{ t('scorecard.backtest') }}</th></tr></thead>
     <tbody>
     {% for r in by_rule %}
     <tr><td><strong>{{ t('rule.' ~ r.rule_id ~ '.name') }}</strong> <code class="muted small">{{ r.rule_id }}</code></td><td class="num">{{ r.alerts }}</td><td class="num">{{ r.episodes }}</td><td class="num">{{ r.scored }}</td>

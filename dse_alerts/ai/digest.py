@@ -36,12 +36,14 @@ You are given alerts produced by a rule-based monitor for the latest trading ses
 Write 120-200 words of plain English:
 - Open with one sentence on the session as a whole for this watchlist.
 - Then one short paragraph per alerted stock: what happened, how unusual it is for that stock (use the baselines given), and any filing or record date that explains it. Keep the numbers.
-- If the input has a rule_history section, close with one sentence that repeats its figures for the rules that fired, as a description of the past ("over 2013 to 2026, ..."). If there is no rule_history section, do not mention history at all.
+- If the input has a rule_history section, close with one sentence that repeats its figures for the rules that fired, as a description of the past ("over 2013 to 2026, ..."), and give the any-day figure next to the share that rose so the reader has the comparison. If there is no rule_history section, do not mention history at all.
 
 Rules you must follow:
 - Never advise. Do not say buy, sell, hold, accumulate, exit, wait, or any equivalent, and do not predict prices.
 - Never describe what such moves usually lead to, precede, signal or are followed by. No "rebound", "reversal", "momentum", "oversold", "support" or "resistance".
-- Do not invent facts. Every number you write must appear in the input. If something is not in the input, do not mention it; do not count or date past events yourself.
+- Do not invent facts. Every number you write must appear in the input. If something is not in the input, do not mention it; do not count or date past events yourself. Say nothing about stocks that have no alert, beyond that no rule fired for them; you do not know how they traded.
+- Write the session as the day given in the input (for example "on Sunday 12 October"). Do not repeat background about the exchange, such as which weekdays it trades.
+- Never read field names back. Write what a value means ("one filing", "a 9.8% rise"), not "count of 1" or "the headline says".
 - No headings, no bullet points, no emojis. Plain prose. British or Bangladeshi English spelling is fine.
 - Plain punctuation only: commas, full stops and ordinary hyphens. No dashes, no arrows, no symbols. Write percentages as 9.8%, with no space before the sign.
 - Explain any term a first-time investor may not know in a few words the first time it appears (for example "upper circuit, the daily price limit").
@@ -58,20 +60,49 @@ def system_prompt(lang: str = "en") -> str:
 
 
 DSE_CONTEXT = (
-    "Context about the DSE that is safe to rely on: trading days are Sunday to Thursday; daily price moves are "
-    "capped by slab-based circuit breakers (10% for shares under Tk 200, less for pricier shares); categories A, B "
-    "and Z reflect dividend and AGM compliance, Z being the weakest; 'PSI' means price-sensitive information the "
+    "Background for your own understanding, not to be repeated: on the DSE daily price moves are capped by "
+    "slab-based circuit breakers (10% for shares under Tk 200, less for pricier shares); categories A, B and Z "
+    "reflect dividend and AGM compliance, Z being the weakest; 'PSI' means price-sensitive information the "
     "company filed with the exchange."
 )
+
+# evidence keys as words, so the note never has to guess what a field means
+_LABELS = {
+    "ret_1": "move on the day", "ret": "move over the period", "days": "sessions in the period", "close": "close",
+    "streak": "sessions in a row at the limit", "slab_limit": "daily limit", "hits_per_year": "times a year this stock hits the limit",
+    "count": "filings since the previous session", "titles": "filing titles", "previous_extreme": "previous 250-session extreme",
+    "ratio": "volume versus the 20-session average", "vol_ratio": "volume versus the 20-session average",
+    "threshold": "this stock's usual limit for such a move", "pct": "move", "record_date": "record date",
+    "dividend": "dividend", "diff": "difference from the index", "dsex_ret_1": "index move on the day",
+    "pe": "P/E", "zero_volume_sessions": "sessions with no trades", "ref": "reference level", "factor": "adjustment factor",
+}
+
+
+def _words(ev: dict | None) -> dict:
+    out = {}
+    for k, v in (ev or {}).items():
+        label = _LABELS.get(k, str(k).replace("_", " "))
+        if isinstance(v, float) and abs(v) < 1 and k not in ("factor", "pe") and not k.endswith("close"):
+            v = f"{100 * v:+.1f}%"          # returns arrive as fractions; the note should see percentages
+        out[label] = v
+    return out
+
+
+def notable(alerts: list[Alert]) -> bool:
+    """A note is worth writing only when something happened: a routine filing or an "info" alert
+    on its own gives the model nothing to describe, and it will pad."""
+    return any(a.severity in ("notable", "high") for a in alerts)
 
 
 def build_prompt(session: dt.date, alerts: list[Alert], symbols: list[str], evidence: dict[str, dict] | None = None) -> str:
     payload: dict[str, Any] = {
         "session": session.isoformat(),
+        "session_day": session.strftime("%A %d %B %Y").replace(" 0", " "),
         "watchlist": symbols,
+        "stocks_with_no_alert": sorted(set(symbols) - {a.symbol for a in alerts}),
         "alerts": [
             {"symbol": a.symbol, "rule": a.rule_id, "severity": a.severity, "headline": a.headline,
-             "detail": a.detail, "numbers": a.evidence}
+             "detail": a.detail, "numbers": _words(a.evidence)}
             for a in alerts
         ],
     }
@@ -81,6 +112,8 @@ def build_prompt(session: dt.date, alerts: list[Alert], symbols: list[str], evid
             k: {"fires_per_stock_year": round(v.get("per_250_sessions") or 0, 1),
                 "median_move_20_sessions_later": f"{100 * (v.get('fwd20_median') or 0):+.1f}%",
                 "share_that_rose_20_sessions_later": f"{round(100 * (v.get('fwd20_positive_share') or 0))}%",
+                "share_that_rose_20_sessions_after_any_day": f"{round(100 * (v.get('base_fwd20_positive_share') or 0))}%"
+                if v.get("base_fwd20_positive_share") is not None else "not available",
                 "study": "2013 to 2026, every DSE stock"}
             for k, v in evidence.items() if k in fired and (v.get("n") or v.get("fwd20_median") is not None or v.get("per_250_sessions"))
         }
@@ -93,7 +126,9 @@ _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 _FORBIDDEN = re.compile(
     r"\b(usually|typically|tends? to|often (precedes|follows|leads)|precede[sd]?|signal(s|led|ling)?|rebound|reversal|"
     r"momentum|oversold|overbought|bullish|bearish|support level|resistance|likely to|expect(ed|s)?|"
-    r"should (rise|fall|recover)|will (rise|fall|recover)|buy|sell|hold|accumulate)\b", re.IGNORECASE)
+    r"should (rise|fall|recover)|will (rise|fall|recover)|buy|sell|hold|accumulate|"
+    r"Sunday to Thursday|Sunday-Thursday|within (its|their) (usual|normal) (daily )?limits?|"
+    r"(the )?(count|headline|detail|rule|severity|field) (of|says|reads|is)|a count of)\b", re.IGNORECASE)
 _RETRY_NOTE = ("\n\nYour previous draft was rejected for these reasons: {reasons}. Write it again using only numbers "
                "that appear in the input and without describing what such moves usually lead to.")
 
@@ -215,8 +250,9 @@ def tidy(text: str) -> str:
 
 def write_digest_detailed(settings: Settings, session: dt.date, alerts: list[Alert], symbols: list[str],
                           evidence: dict[str, dict] | None = None, lang: str = "en") -> tuple[str | None, str | None]:
-    """Return ``(text, "provider:model")``; ``(None, None)`` when AI is off, nothing fired, or every provider failed."""
-    if not settings.ai_enabled or not alerts:
+    """Return ``(text, "provider:model")``; ``(None, None)`` when AI is off, nothing notable fired,
+    or every provider failed."""
+    if not settings.ai_enabled or not alerts or not notable(alerts):
         return None, None
     prompt = build_prompt(session, alerts, symbols, evidence)
     for p in settings.ai_chain():

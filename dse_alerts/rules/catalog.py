@@ -13,6 +13,7 @@ Design notes
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import Any
 
 import pandas as pd
@@ -190,20 +191,24 @@ def _vs_index(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
 
 
 # What a filing is about, most consequential first. The headline leads with the top one.
+# Whole words (or word stems, marked with a trailing *), so "land" does not match "Bangladesh"
+# and "nav" does not match "Navana".
 NEWS_PRIORITY = [
-    ("dividend", "dividend"), ("bonus", "dividend"), ("right", "rights"), ("eps", "results"), ("earning", "results"),
-    ("financial", "results"), ("profit", "results"), ("loss", "results"), ("nav", "results"),
-    ("acqui", "deal"), ("purchase", "deal"), ("land", "deal"), ("agreement", "deal"), ("contract", "deal"),
-    ("merger", "deal"), ("agm", "meeting"), ("egm", "meeting"), ("record date", "meeting"),
+    ("dividend*", "dividend"), ("bonus", "dividend"), ("right*", "rights"), ("eps", "results"), ("earning*", "results"),
+    ("financial*", "results"), ("profit*", "results"), ("loss*", "results"), ("nav", "results"),
+    ("acqui*", "deal"), ("purchase*", "deal"), ("land", "deal"), ("agreement*", "deal"), ("contract*", "deal"),
+    ("merger*", "deal"), ("agm", "meeting"), ("egm", "meeting"), ("record date", "meeting"),
     ("board", "meeting"), ("credit rating", "rating"), ("price limit", "routine"), ("bank", "routine"),
-    ("update of information", "routine"), ("spot", "routine"), ("suspen", "routine"), ("resum", "routine"),
+    ("update of information", "routine"), ("spot", "routine"), ("suspen*", "routine"), ("resum*", "routine"),
 ]
+_NEWS_PATTERNS = [re.compile(r"\b" + re.escape(n[:-1]) + r"\w*" if n.endswith("*") else r"\b" + re.escape(n) + r"\b")
+                  for n, _kind in NEWS_PRIORITY]
 
 
 def news_rank(title: str) -> int:
     t = str(title).lower()
-    for i, (needle, _kind) in enumerate(NEWS_PRIORITY):
-        if needle in t:
+    for i, pat in enumerate(_NEWS_PATTERNS):
+        if pat.search(t):
             return i
     return len(NEWS_PRIORITY) - 1     # unknown: just above the routine notices
 
@@ -331,9 +336,9 @@ RULES: list[Rule] = [
          {"ratio": 3.0, "min_move": 0.03, "use_stock_baseline": True},
          "vol_ratio_20 >= greatest(3, coalesce(vol_ratio_p95, 3)) AND abs(ret_1) >= 0.03", _volume_spike, "notable"),
     Rule("new_250d_high", "New 250-session high", "Closed above the highest high of the previous 250 sessions",
-         {}, "close > high_250", _range_break("high"), "notable"),
+         {}, "aclose > high_250 AND NOT coalesce(prev_aclose > high_250_prev, false)", _range_break("high"), "notable"),
     Rule("new_250d_low", "New 250-session low", "Closed below the lowest low of the previous 250 sessions",
-         {}, "close < low_250", _range_break("low"), "notable"),
+         {}, "aclose < low_250 AND NOT coalesce(prev_aclose < low_250_prev, false)", _range_break("low"), "notable"),
     Rule("vs_index", "Diverged from DSEX", "Moved at least 5 points more or less than the index on the day",
          {"pct": 0.05}, "abs(ret_1 - dsex_ret_1) >= 0.05", _vs_index, "notable"),
     Rule("psi_news", "Price-sensitive news", "The company filed price-sensitive information since the previous session",

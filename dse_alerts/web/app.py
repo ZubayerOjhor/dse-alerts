@@ -439,6 +439,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
                       total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth,
                       digest=dict(digest) if digest else None, ai_on=settings.ai_enabled,
+                      ai_routine_only=bool(today) and not any(a.get("severity") in ("notable", "high") for a in today),
                       board=market.sector_board(store), movers=market.top_movers(store, 6),
                       record_dates=record_dates, record_scope=record_scope)
 
@@ -662,8 +663,10 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
         lang = lang_of(request, user)
         df = sc.outcomes(store, appdb, user["id"])
-        agg = sc.by_rule(df, sc.load_expectation(settings))
+        expectation = sc.load_expectation(settings)
+        agg = sc.by_rule(df, expectation)
         return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=_records(agg),
+                      base=_base_rate(expectation),
                       pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df),
                       episodes=int(df["episode_start"].sum()) if not df.empty else 0, min_episodes=sc.MIN_EPISODES)
 
@@ -672,9 +675,17 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         from dse_alerts.analysis.calibrate import load_calibration, rule_evidence
 
         study = load_calibration(settings)
-        return render(request, "rules.html", active="rules", rules=RULES, opt_in=OPT_IN, cal=rule_evidence(settings),
+        cal = rule_evidence(settings)
+        return render(request, "rules.html", active="rules", rules=RULES, opt_in=OPT_IN, cal=cal, base=_base_rate(cal),
                       study={"first": str(study.get("first", ""))[:10], "last": str(study.get("last", ""))[:10],
                              "symbols": study.get("symbols"), "sessions": study.get("sessions")} if study else None)
+
+    def _base_rate(cal: dict) -> dict | None:
+        """What any session looked like 20 sessions later, the comparison for every "rose afterwards"."""
+        for v in cal.values():
+            if v.get("base_fwd20_positive_share") is not None:
+                return {"positive": round(100 * v["base_fwd20_positive_share"]), "median": v.get("base_fwd20_median")}
+        return None
 
     def settings_ctx(user):
         from dse_alerts.notify import deliver

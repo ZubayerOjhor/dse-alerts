@@ -413,12 +413,12 @@
   "help.pnl": "Market value minus what you paid. Unrealised: it only becomes real when you sell.",
   "help.fwd5": "The middle value of the price move 5 sessions after the alert.",
   "help.fwd20": "The middle value of the price move 20 sessions after the alert.",
-  "help.positive": "The share of alerts after which the price was higher 20 sessions later.",
+  "help.positive": "The share of episodes after which the price was higher 20 sessions later. Compare with the figure for any session, shown under the heading.",
   "help.vs_dsex": "The stock's 20-session move minus the index's move over the same sessions.",
   "help.backtest": "What the 14-year backtest found for this rule, for comparison.",
   "help.fires": "How many times a year this rule fires for a typical stock.",
   "help.median20": "The middle 20-session move after the rule fired, over the whole history.",
-  "help.rose": "The share of cases where the price was higher 20 sessions later.",
+  "help.rose": "The share of cases where the price was higher 20 sessions later. Compare with the figure for any session, shown under the heading.",
   "help.record_date": "The date on which the register of shareholders is checked. Whoever owns the share at the close of the previous session gets the dividend.",
   "find.title": "Find stocks",
   "find.sub": "Every stock that traded in the latest session, filtered by simple conditions. Facts about today, not recommendations.",
@@ -559,5 +559,8 @@
   "home.about_privacy": "What is stored: your email, a hashed password, your watchlist and any holdings you import. What leaves this server: alerts to the email or Telegram chat you confirm, and, when the AI note is on, the alert text (trading codes, prices and percentages, never your name, email or holdings) to the AI provider that writes it. No analytics, no advertising.",
   "home.about_author": "Built by Md. Zubayer as an open source project:",
   "home.about_contact": "Questions and problems:",
-  "home.about_issues": "open an issue on GitHub"
+  "home.about_issues": "open an issue on GitHub",
+  "ai.routine_only": "Only routine notices this session, so no note was written; the alerts above say it all.",
+  "rules.any_day": "any session: {pct}%",
+  "rules.base_note": "For comparison, after any session in the study the price was higher 20 sessions later {pct}% of the time, with a median move of {median}. A rule's share only means something next to that figure. Each row studies the rule exactly as it fires here, with its default settings, once per episode."
 }

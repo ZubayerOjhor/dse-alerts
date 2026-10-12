@@ -52,6 +52,8 @@
   <p class="muted">{{ t('ai.off') }}</p>
   {% elif not alerts %}
   <p class="muted">{{ t('ai.no_alerts') }}</p>
+  {% elif ai_routine_only %}
+  <p class="muted">{{ t('ai.routine_only') }}</p>
   {% else %}
   <p class="muted">{{ t('ai.none_yet') }}</p>
   {% endif %}

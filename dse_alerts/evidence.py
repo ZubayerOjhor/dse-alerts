@@ -51,8 +51,8 @@ def symbol_snapshot(store: MarketStore, symbol: str, sessions: int = 300) -> pd.
     with store.connect(read_only=True) as con:
         df = con.execute(
             """
-            SELECT f.date, f.open, f.high, f.low, f.close, f.volume, f.ret_1, f.ret_20, f.vol_ratio_20, f.sma_20, f.sma_50,
-                   f.high_250, f.low_250, f.hit_upper, f.hit_lower, f.zero_vol_10, f.dsex_ret_1
+            SELECT f.date, f.open, f.high, f.low, f.close, f.volume, f.ret_1, f.ret_20, f.ret_60, f.ret_250, f.vol_ratio_20,
+                   f.sma_20, f.sma_50, f.high_250, f.low_250, f.adj_factor, f.hit_upper, f.hit_lower, f.zero_vol_10, f.dsex_ret_1
             FROM features f WHERE f.symbol = ? ORDER BY f.date DESC LIMIT ?
             """,
             [symbol, sessions],
@@ -102,14 +102,17 @@ def evidence(store: MarketStore, symbol: str, stats: pd.Series | None, fund: pd.
                 "high_250": None, "low_250": None, "vol_ratio_p95": None, "sector_pe": None, "trend": "na"}
     last = hist.iloc[-1]
     close = _f(last["close"])
-
-    def ret(n):
-        return _f(close / hist["close"].iloc[-1 - n] - 1) if len(hist) > n and hist["close"].iloc[-1 - n] else None
-
-    r20, r60, r250 = ret(20), ret(60), ret(250)
+    # moves come from the features table, on prices adjusted for bonus and rights issues, so
+    # they agree with the overview and the alerts; the printed close is what is shown
+    r20, r60, r250 = _f(last["ret_20"]), _f(last["ret_60"]), _f(last["ret_250"])
     dsex_20 = index_return(store, hist["date"].iloc[-21].date(), hist["date"].iloc[-1].date()) if len(hist) > 20 else None
+    factor = _f(last["adj_factor"]) or 1.0
     sma20, sma50 = _f(last["sma_20"]), _f(last["sma_50"])
+    sma20 = sma20 / factor if sma20 is not None else None      # back to today's printed scale
+    sma50 = sma50 / factor if sma50 is not None else None
     hi, lo = _f(last["high_250"]), _f(last["low_250"])
+    hi = hi / factor if hi is not None else None
+    lo = lo / factor if lo is not None else None
     range_pos = (close - lo) / (hi - lo) if hi is not None and lo is not None and hi > lo else None
     st = (lambda k: _f(stats[k]) if stats is not None and k in stats else None)
     sd, p95v = st("ret1_sd"), st("vol_ratio_p95")
@@ -176,10 +179,12 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
     with store.connect(read_only=True) as con:
         base = con.execute(
             f"""
-            SELECT f.symbol, i.name, i.category, i.sector, f.close, f.ret_20, f.vol_ratio_20, f.sma_20, f.sma_50, f.high_250, f.low_250,
-                   f.close / lag(f.close, 60) OVER (PARTITION BY f.symbol ORDER BY f.date) - 1 AS ret_60,
-                   f.close / lag(f.close, 250) OVER (PARTITION BY f.symbol ORDER BY f.date) - 1 AS ret_250,
-                   list(f.close) OVER (PARTITION BY f.symbol ORDER BY f.date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS closes
+            SELECT f.symbol, i.name, i.category, i.sector, f.close, f.ret_20, f.ret_60, f.ret_250, f.vol_ratio_20,
+                   f.sma_20 / f.adj_factor AS sma_20, f.sma_50 / f.adj_factor AS sma_50,
+                   f.high_250 / f.adj_factor AS high_250, f.low_250 / f.adj_factor AS low_250,
+                   f.adj_factor,
+                   -- adjusted closes, put on today's printed scale below, so a bonus issue is not a cliff in the sparkline
+                   list(f.aclose) OVER (PARTITION BY f.symbol ORDER BY f.date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS closes
             FROM features f JOIN instruments i USING (symbol) WHERE f.symbol IN ({ph})
             QUALIFY row_number() OVER (PARTITION BY f.symbol ORDER BY f.date DESC) = 1
             """,
@@ -210,6 +215,6 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
             "sector_pe": sector_cache[r.sector],
             "last_news_date": _date(news_m.loc[r.symbol, "date"]) if news_m is not None and r.symbol in news_m.index else None,
             "last_news_title": str(news_m.loc[r.symbol, "title"]) if news_m is not None and r.symbol in news_m.index else None,
-            "closes": list(r.closes) if r.closes is not None else [],
+            "closes": [c / (_f(r.adj_factor) or 1.0) for c in r.closes] if r.closes is not None else [],
         })
     return out

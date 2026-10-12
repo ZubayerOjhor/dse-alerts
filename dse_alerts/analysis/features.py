@@ -23,7 +23,10 @@ Returns, averages and ranges are computed on ``close * adj_factor``: the archive
 series for bonus shares and rights issues, extended with stock dividends from the dividends
 table for record dates after the archive ends. ``close`` itself stays as printed.
 * ``upper_streak / lower_streak``        consecutive sessions at that limit, including today
-* ``high_250 / low_250``                 highest high / lowest low of the previous 250 sessions
+* ``high_250 / low_250``                 highest high / lowest low of the previous 250 sessions (adjusted)
+* ``high_250_prev / low_250_prev``       the same as of the previous session (once-per-episode tests)
+* ``aclose / prev_aclose``               adjusted close today and the session before; compare these, not
+                                         ``close``, with anything adjusted (ret_60 / ret_250 are adjusted too)
 * ``sma_20 / sma_50``                    simple moving averages of the close (incl. today)
 * ``sma50_cross``                        +1 when the close crossed above the 50-session average today, -1 below, else 0
 * ``zero_vol_10``                        sessions with no trades among the last 10
@@ -111,6 +114,8 @@ base AS (
            lag(p.close * p.adj_total, 6)   OVER w AS close_6,
            lag(p.close * p.adj_total, 11)  OVER w AS close_11,
            lag(p.close * p.adj_total, 21)  OVER w AS close_21,
+           lag(p.close * p.adj_total, 60)  OVER w AS close_60,
+           lag(p.close * p.adj_total, 250) OVER w AS close_250,
            lead(p.close * p.adj_total, 5)  OVER w AS close_f5,
            lead(p.close * p.adj_total, 20) OVER w AS close_f20,
            avg(p.volume)  OVER (w ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) AS avg_vol_20,
@@ -161,6 +166,9 @@ grp AS (
 )
 SELECT g.symbol, g.date, g.open, g.high, g.low, g.close, g.volume, g.source, g.date_quality,
        g.prev_close, g.ret_1, g.raw_ret_1, g.adj_factor,
+       g.aclose, g.prev_aclose,                           -- adjusted closes, comparable with high_250/low_250
+       g.aclose / g.close_60  - 1 AS ret_60,
+       g.aclose / g.close_250 - 1 AS ret_250,
        g.aclose / g.close_5  - 1 AS ret_5,
        g.aclose / g.close_10 - 1 AS ret_10,
        g.aclose / g.close_20 - 1 AS ret_20,
@@ -184,6 +192,9 @@ SELECT g.symbol, g.date, g.open, g.high, g.low, g.close, g.volume, g.source, g.d
             ELSE 0 END AS lower_streak,
        CASE WHEN g.n_prev_250 >= 200 THEN g.high_250 END AS high_250,
        CASE WHEN g.n_prev_250 >= 200 THEN g.low_250  END AS low_250,
+       -- the previous session's range, so "new high" can mean the first close beyond it
+       CASE WHEN g.n_prev_250 >= 201 THEN lag(g.high_250) OVER (PARTITION BY g.symbol ORDER BY g.date) END AS high_250_prev,
+       CASE WHEN g.n_prev_250 >= 201 THEN lag(g.low_250)  OVER (PARTITION BY g.symbol ORDER BY g.date) END AS low_250_prev,
        CASE WHEN g.n_prev_50 >= 20 THEN g.sma_20 END AS sma_20,
        CASE WHEN g.n_prev_50 >= 50 THEN g.sma_50 END AS sma_50,
        CASE WHEN g.n_prev_50 < 50 OR g.above_50 IS NULL OR g.above_50_prev IS NULL THEN 0
