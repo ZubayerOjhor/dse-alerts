@@ -60,13 +60,13 @@
 <div class="card">
   <div class="row between" style="margin-bottom:10px">
     <h2 style="margin:0">{{ t('dash.watched') }}</h2>
-    <form method="post" action="/watchlist/add" class="row">
+    {% if not demo %}<form method="post" action="/watchlist/add" class="row">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input name="symbol" list="codes" placeholder="{{ t('dash.add_placeholder') }}" required autocomplete="off" style="width:220px">
       <select name="kind"><option value="watch">{{ t('dash.kind_watch') }}</option><option value="target">{{ t('dash.kind_target') }}</option></select>
       <datalist id="codes"></datalist>
       <button class="primary">{{ t('common.add') }}</button>
-    </form>
+    </form>{% endif %}
   </div>
   {% if rows %}
   <table>
@@ -83,7 +83,7 @@
       <td class="num">{{ r.vol_ratio_20 | num }}x</td>
       <td>{% if r.hit_upper %}<span class="badge up">{{ t('common.upper') }}{% if r.upper_streak > 1 %}, {{ r.upper_streak }} {{ t('common.in_a_row') }}{% endif %}</span>{% elif r.hit_lower %}<span class="badge down">{{ t('common.lower') }}{% if r.lower_streak > 1 %}, {{ r.lower_streak }} {{ t('common.in_a_row') }}{% endif %}</span>{% endif %}</td>
       <td><svg class="spark {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ r.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
-      <td><form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><button class="link danger">{{ t('common.remove') }}</button></form></td>
+      <td>{% if not demo %}<form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><button class="link danger">{{ t('common.remove') }}</button></form>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -144,7 +144,7 @@
   {% else %}<p class="muted">{{ t('market.record_none') }}</p>{% endif %}
 </div>
 <script>
-fetch('/instruments.json', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (list) {
+if (document.getElementById('codes')) fetch('/instruments.json', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (list) {
   var dl = document.getElementById('codes');
   list.forEach(function (i) { var o = document.createElement('option'); o.value = i.symbol; o.label = i.name; dl.appendChild(o); });
 });

@@ -4,11 +4,11 @@
 {% block content %}
 <div class="page-head">
   <div><h1>{{ t('targets.title') }}</h1><div class="sub">{{ t('targets.sub') }}</div></div>
-  <form method="post" action="/watchlist/add" class="row">
+  {% if not demo %}<form method="post" action="/watchlist/add" class="row">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="target">
     <input name="symbol" list="codes" placeholder="{{ t('targets.add_placeholder') }}" required autocomplete="off" style="width:240px"><datalist id="codes"></datalist>
     <button class="primary">{{ t('targets.add') }}</button>
-  </form>
+  </form>{% endif %}
 </div>
 
 {% if rows %}
@@ -30,7 +30,7 @@
       <td class="num">{{ r.pe | num }}</td><td class="num muted">{{ r.sector_pe | num }}</td><td class="num">{{ r.dividend_yield | num(2) }}%</td>
       <td class="small" style="min-width:150px">{% if r.last_news_date %}{{ r.last_news_date }}<div class="muted name" style="max-width:150px" title="{{ r.last_news_title or '' }}">{{ r.last_news_title or "" }}</div>{% endif %}</td>
       <td><svg class="spark {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ r.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
-      <td><form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link danger">{{ t('targets.untarget') }}</button></form></td>
+      <td>{% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link danger">{{ t('targets.untarget') }}</button></form>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

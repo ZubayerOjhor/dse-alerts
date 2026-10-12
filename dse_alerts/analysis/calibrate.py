@@ -48,7 +48,41 @@ _UNIVERSE = """
     FROM features f
     JOIN instruments i USING (symbol)
     WHERE i.tradeable AND f.regime = 'normal' AND f.date >= ? AND f.ret_1 IS NOT NULL
+      AND NOT f.limit_break
 """
+
+
+def load_calibration(settings) -> dict:
+    """The calibration study: ``data/calibration.json`` when this installation ran it, else the
+    copy shipped in the repository (``calibration/calibration.json``), else nothing."""
+    import json
+
+    for p in (settings.dse_data_dir / "calibration.json", Path(__file__).resolve().parents[2] / "calibration" / "calibration.json"):
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except ValueError:
+                continue
+    return {}
+
+
+def rule_evidence(settings) -> dict[str, dict]:
+    """Backtest numbers keyed by rule id, for the rules page, the scorecard and the AI note."""
+    events = {e["event"]: e for e in load_calibration(settings).get("event_stats", []) if "event" in e}
+    out = {}
+    for rule_id, event in EVENT_FOR_RULE.items():
+        if event in events:
+            out[rule_id] = events[event]
+    return out
+
+
+# which event of the study each rule corresponds to (the rule's default parameters)
+EVENT_FOR_RULE = {
+    "big_drop": "drop_10d_ge_10pct", "big_rise": "rise_10d_ge_15pct",
+    "upper_circuit": "upper_circuit", "lower_circuit": "lower_circuit",
+    "volume_spike": "volume_3x_and_up_5pct", "new_250d_high": "new_250d_high", "new_250d_low": "new_250d_low",
+    "vs_index": "beats_index_by_5pct",
+}
 
 
 def run(store: MarketStore, since: dt.date = DEFAULT_SINCE) -> dict:

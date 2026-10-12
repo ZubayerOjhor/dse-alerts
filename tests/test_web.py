@@ -187,7 +187,8 @@ def test_demo_mode_is_read_only(tmp_path, env):
     assert demo.post("/demo").status_code == 303
     page = demo.get("/").text
     assert "shared demo account" in page and "Grameenphone" in page
-    csrf = page.split('name="csrf" value="')[1].split('"')[0]
+    assert "/watchlist/add" not in page and "/alerts/check" not in page    # a read-only account shows no write buttons
+    csrf = demo.get("/settings").text.split('name="csrf" value="')[1].split('"')[0]
     r = demo.post("/watchlist/add", data={"symbol": "ROBI", "csrf": csrf})
     assert r.status_code == 403 and "read-only" in r.text
     assert demo.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on"}).status_code == 403
@@ -385,3 +386,11 @@ def test_ai_notes_are_kept_per_language(env, monkeypatch):
         assert f"note-{code}" in client.get("/").text
     assert calls == ["en", "bn"]                                    # one provider call per language, never rewritten
     assert db.digest_for(uid, last, "en")["text"] == "note-en" and db.digest_for(uid, last, "bn")["text"] == "note-bn"
+
+
+def test_unknown_pages_get_a_plain_message(client):
+    r = client.get("/no-such-page")
+    assert r.status_code == 404 and "There is no page at that address." in r.text and "Not Found" not in r.text
+    r = client.get("/demo")
+    assert r.status_code == 405 and "does not accept this kind of request" in r.text
+    assert client.head("/learn").status_code == 200 and client.head("/learn").text == ""

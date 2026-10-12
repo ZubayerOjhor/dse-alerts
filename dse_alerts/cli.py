@@ -226,6 +226,17 @@ def validate(
 
 
 @data_app.command()
+def latest(expect_today: bool = typer.Option(False, "--expect-today", help="Exit 1 unless the latest session is today")):
+    """Print the latest session date in the store (used by the scheduler to decide on a retry)."""
+    import datetime as dt
+
+    last = _store().summary()["last"]
+    rprint(str(last))
+    if expect_today and last != dt.date.today():
+        raise typer.Exit(1)
+
+
+@data_app.command()
 def status():
     """What is in the market database."""
     s = _store().summary()

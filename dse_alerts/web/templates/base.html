@@ -43,7 +43,7 @@
     {% if user %}<form method="post" action="/logout" class="inline"><button class="link">{{ t('nav.logout') }}</button></form>{% else %}<a class="btn" href="/login">{{ t('login.title') }}</a>{% endif %}
   </div>
 </header>
-{% if demo %}<div class="banner demo">{{ t('demo.banner') }} <a href="/register">{{ t('demo.banner_link') }}</a>.</div>{% endif %}
+{% if demo %}<div class="banner demo">{{ t('demo.banner') }}{% if settings.app_registration %} <a href="/register">{{ t('demo.banner_link') }}</a>.{% endif %}</div>{% endif %}
 <main>
 {% block content %}{% endblock %}
 </main>

@@ -9,8 +9,10 @@ adjusted variants. Its files are only served to a browser, so the user downloads
 and extracts it under ``data/raw/mendeley_23553sm4tn/``; ``find_curated`` locates it.
 Verified 2026-10-10: no duplicates, no weekend sessions, circuit-breaker violations
 0.05-0.5% per year, index levels correct, 100% agreement with the live site on 7,062
-overlapping rows. The unadjusted series is loaded (it is what the exchange printed and
-what the live site serves); the adjusted one differs only around corporate actions.
+overlapping rows. The unadjusted series is what is stored and shown (it is what the exchange
+printed and what the live site serves); the adjusted one, which differs after bonus shares
+and rights issues, is loaded alongside it as a per-row factor so returns, ranges and
+thresholds are computed on comparable prices.
 
 **Fallback (auto-download): "Dhaka Stock Exchange Historical Data (1999-2025)"**,
 doi:10.17632/5mww8rb9td.1 (Sunny, Nafis, Khan). One CSV, 1.52M rows, 534 instruments.
@@ -48,6 +50,7 @@ RELIABLE_FROM = "2023-01-01"
 CURATED_URL = "https://data.mendeley.com/datasets/23553sm4tn/4"
 CURATED_DIRNAME = "mendeley_23553sm4tn"
 CURATED_FILE = "UnAdjusted.csv"
+ADJUSTED_FILE = "Adjusted.csv"      # same layout, next to the unadjusted file
 # The curated file carries the indexes as tickers prefixed with 00; we store them under the usual names.
 INDEX_TICKERS = {"00DSEX": "DSEX", "00DS30": "DS30", "00DSES": "DSES", "00DSMEX": "DSMEX"}
 
@@ -84,7 +87,28 @@ def load_curated(csv_path: Path) -> tuple[pd.DataFrame, dict]:
         QUALIFY row_number() OVER (PARTITION BY symbol, date ORDER BY volume DESC, close DESC) = 1
         """
     )
-    df = con.execute("SELECT * FROM clean ORDER BY symbol, date").df()
+    adjusted = csv_path.parent / ADJUSTED_FILE
+    if adjusted.exists():
+        con.execute(
+            f"""
+            CREATE TABLE adj AS
+            SELECT {index_case} AS symbol, CAST("Date" AS DATE) AS date, Close AS adj_close
+            FROM (SELECT trim(Ticker) AS symbol, "Date", Close FROM read_csv('{adjusted.as_posix()}', header=true))
+            QUALIFY row_number() OVER (PARTITION BY symbol, date ORDER BY adj_close DESC) = 1
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE joined AS
+            SELECT c.*, CASE WHEN a.adj_close > 0 AND c.close > 0 THEN a.adj_close / c.close END AS adj_factor
+            FROM clean c LEFT JOIN adj a USING (symbol, date)
+            """
+        )
+        stats["adjusted_rows"] = con.execute("SELECT count(adj_factor) FROM joined").fetchone()[0]
+    else:
+        con.execute("CREATE TABLE joined AS SELECT *, NULL::DOUBLE AS adj_factor FROM clean")
+        stats["adjusted_rows"] = 0
+    df = con.execute("SELECT * FROM joined ORDER BY symbol, date").df()
     stats.update(
         dropped=stats["raw_rows"] - len(df),
         rows=len(df),

@@ -7,7 +7,7 @@
     <p class="lead">{{ t('home.lead') }}</p>
     <div class="cta">
       {% if demo_available %}<form method="post" action="/demo" class="inline"><button class="primary">{{ t('demo.try') }}</button></form>{% endif %}
-      <a class="btn" href="/register">{{ t('home.create') }}</a>
+      {% if registration %}<a class="btn" href="/register">{{ t('home.create') }}</a>{% endif %}
       <a class="btn" href="/login">{{ t('login.title') }}</a>
     </div>
     <p class="muted small">{{ t('home.privacy') }}{% if demo_available %} {{ t('home.demo_note') }}{% endif %}</p>
@@ -69,5 +69,12 @@
     {% for n in [1, 2, 3, 4, 5] %}<li>{{ t('home.f' ~ n) }}</li>{% endfor %}
   </ul>
   <p class="help"><a href="/learn">{{ t('home.learn_link') }}</a> <a href="https://github.com/ZubayerOjhor/dse-alerts" rel="noopener">{{ t('home.source') }}</a></p>
+</div>
+
+<div class="card" id="about">
+  <h2>{{ t('home.about_t') }}</h2>
+  <p class="small" style="margin:0 0 8px">{{ t('home.about_data') }}</p>
+  <p class="small" style="margin:0 0 8px">{{ t('home.about_privacy') }}</p>
+  <p class="small" style="margin:0">{{ t('home.about_author') }} <a href="https://github.com/ZubayerOjhor" rel="noopener">github.com/ZubayerOjhor</a>. {{ t('home.about_contact') }} <a href="https://github.com/ZubayerOjhor/dse-alerts/issues" rel="noopener">{{ t('home.about_issues') }}</a>.</p>
 </div>
 {% endblock %}

@@ -11,7 +11,17 @@ Columns (one row per symbol, session):
 * ``fwd_5 / fwd_20``                     close 5/20 sessions later vs today (for backtests only)
 * ``vol_ratio_20``                       volume / mean volume of the previous 20 sessions
 * ``slab_limit``                         daily price-move limit implied by the previous close
-* ``hit_upper / hit_lower``              closed at (or within a tick of) the upper / lower limit
+* ``raw_ret_1``                          the printed close vs the printed previous close
+* ``ex_session``                         first session after a record date (price adjusts; no limit)
+* ``no_limit``                           the exchange lifted the limit ("Price Limit Open" notice)
+* ``limit_break``                        a move the limit forbids with neither explanation: an
+                                         unrecorded corporate action, so the move is not a move
+* ``hit_upper / hit_lower``              closed at the upper / lower limit (within a tick, both
+                                         sides) on a session where the limit applied
+
+Returns, averages and ranges are computed on ``close * adj_factor``: the archive's adjusted
+series for bonus shares and rights issues, extended with stock dividends from the dividends
+table for record dates after the archive ends. ``close`` itself stays as printed.
 * ``upper_streak / lower_streak``        consecutive sessions at that limit, including today
 * ``high_250 / low_250``                 highest high / lowest low of the previous 250 sessions
 * ``sma_20 / sma_50``                    simple moving averages of the close (incl. today)
@@ -33,6 +43,7 @@ from dse_alerts.data.store import MarketStore
 # tolerance of 0.3 percentage points to absorb tick rounding.
 SLABS = [(200, 0.10), (500, 0.0875), (1000, 0.075), (2000, 0.0625), (5000, 0.05), (float("inf"), 0.0375)]
 HIT_TOLERANCE = 0.003
+BREAK_MARGIN = 0.015    # a raw move this far beyond the limit cannot be a normal session
 
 REGIMES = {
     "bubble_2010": ("2010-10-01", "2011-12-31"),   # run-up, 2010-12-05 peak, crash
@@ -59,43 +70,86 @@ CREATE OR REPLACE TABLE index_daily AS
     WHERE dsex IS NOT NULL AND date NOT IN (SELECT date FROM prices WHERE symbol = 'DSEX');
 
 CREATE OR REPLACE TABLE features AS
-WITH base AS (
-    SELECT p.symbol, p.date, p.open, p.high, p.low, p.close, p.volume, p.source, p.date_quality,
-           lag(close)      OVER w AS prev_close,
-           lag(close, 5)   OVER w AS close_5,
-           lag(close, 10)  OVER w AS close_10,
-           lag(close, 20)  OVER w AS close_20,
-           lag(close, 6)   OVER w AS close_6,
-           lag(close, 11)  OVER w AS close_11,
-           lag(close, 21)  OVER w AS close_21,
-           lead(close, 5)  OVER w AS close_f5,
-           lead(close, 20) OVER w AS close_f20,
-           avg(volume)  OVER (w ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) AS avg_vol_20,
-           avg(close)   OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS sma_20,
-           avg(close)   OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS sma_50,
-           count(*)     OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS n_prev_50,
-           sum(CASE WHEN volume = 0 THEN 1 ELSE 0 END) OVER (w ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS zero_vol_10,
-           -- sessions with no trades carry open/high/low = 0; use the close for them
-           max(CASE WHEN high > 0 THEN high ELSE close END) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS high_250,
-           min(CASE WHEN low  > 0 THEN low  ELSE close END) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS low_250,
-           count(*)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS n_prev_250,
-           date - lag(date) OVER w AS gap_days
+WITH archive_end AS (
+    SELECT symbol, max(date) AS last_archive FROM prices WHERE source = 'archive' GROUP BY symbol
+),
+-- stock dividends with a record date after the archive: the archive's factors cannot know them
+post_adj AS (
+    SELECT d.symbol, d.record_date,
+           1.0 / (1.0 + CAST(regexp_extract(d.dividend, '(\\d+(?:\\.\\d+)?)\\s*%\\s*Stock', 1) AS DOUBLE) / 100.0) AS factor
+    FROM dividends d LEFT JOIN archive_end a USING (symbol)
+    WHERE d.record_date IS NOT NULL AND regexp_matches(d.dividend, '\\d+(?:\\.\\d+)?\\s*%\\s*Stock')
+      AND (a.last_archive IS NULL OR d.record_date > a.last_archive)
+),
+-- the first session after any record date: the price adjusts and the exchange lifts the limit
+ex_sessions AS (
+    SELECT d.symbol, min(p.date) AS date
+    FROM dividends d JOIN prices p ON p.symbol = d.symbol AND p.date > d.record_date
+    WHERE d.record_date IS NOT NULL
+    GROUP BY d.symbol, d.record_date
+),
+no_limit_days AS (
+    SELECT DISTINCT symbol, date FROM news WHERE lower(title) LIKE '%price limit open%'
+),
+adj AS (
+    SELECT p.*,
+           coalesce(p.adj_factor, 1)
+             * coalesce((SELECT product(x.factor) FROM post_adj x WHERE x.symbol = p.symbol AND x.record_date >= p.date), 1)
+             AS adj_total
     FROM prices p
     WHERE p.symbol NOT IN ('DSEX', 'DS30', 'DSES') AND p.date_quality <> 'unreliable'
-    WINDOW w AS (PARTITION BY symbol ORDER BY date)
+),
+base AS (
+    SELECT p.symbol, p.date, p.open, p.high, p.low, p.close, p.volume, p.source, p.date_quality,
+           p.adj_total AS adj_factor,
+           p.close * p.adj_total AS aclose,
+           lag(p.close)      OVER w AS prev_close,
+           lag(p.close * p.adj_total)      OVER w AS prev_aclose,
+           lag(p.close * p.adj_total, 5)   OVER w AS close_5,
+           lag(p.close * p.adj_total, 10)  OVER w AS close_10,
+           lag(p.close * p.adj_total, 20)  OVER w AS close_20,
+           lag(p.close * p.adj_total, 6)   OVER w AS close_6,
+           lag(p.close * p.adj_total, 11)  OVER w AS close_11,
+           lag(p.close * p.adj_total, 21)  OVER w AS close_21,
+           lead(p.close * p.adj_total, 5)  OVER w AS close_f5,
+           lead(p.close * p.adj_total, 20) OVER w AS close_f20,
+           avg(p.volume)  OVER (w ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) AS avg_vol_20,
+           avg(p.close * p.adj_total)   OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS sma_20,
+           avg(p.close * p.adj_total)   OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS sma_50,
+           count(*)     OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS n_prev_50,
+           sum(CASE WHEN p.volume = 0 THEN 1 ELSE 0 END) OVER (w ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS zero_vol_10,
+           -- sessions with no trades carry open/high/low = 0; use the close for them
+           max((CASE WHEN p.high > 0 THEN p.high ELSE p.close END) * p.adj_total) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS high_250,
+           min((CASE WHEN p.low > 0 THEN p.low ELSE p.close END) * p.adj_total) OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS low_250,
+           count(*)     OVER (w ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS n_prev_250,
+           p.date - lag(p.date) OVER w AS gap_days,
+           x.symbol IS NOT NULL AS ex_session,
+           n.symbol IS NOT NULL AS no_limit
+    FROM adj p
+    LEFT JOIN ex_sessions x ON x.symbol = p.symbol AND x.date = p.date
+    LEFT JOIN no_limit_days n ON n.symbol = p.symbol AND n.date = p.date
+    WINDOW w AS (PARTITION BY p.symbol ORDER BY p.date)
 ),
 lim AS (
     SELECT *,
            {_SLAB_SQL} AS slab_limit,
-           close / prev_close - 1 AS ret_1,
-           sign(close - sma_50) AS above_50,
-           lag(sign(close - sma_50)) OVER (PARTITION BY symbol ORDER BY date) AS above_50_prev
+           aclose / prev_aclose - 1 AS ret_1,
+           close / prev_close - 1 AS raw_ret_1,
+           sign(aclose - sma_50) AS above_50,
+           lag(sign(aclose - sma_50)) OVER (PARTITION BY symbol ORDER BY date) AS above_50_prev
     FROM base
 ),
 hits AS (
     SELECT *,
-           ret_1 >=  slab_limit - {HIT_TOLERANCE} AS hit_upper,
-           ret_1 <= -slab_limit + {HIT_TOLERANCE} AS hit_lower
+           -- a move the limit forbids, on a session with no known reason: a corporate action we
+           -- do not have, so neither the circuit nor the return should be believed
+           (NOT ex_session AND NOT no_limit AND abs(raw_ret_1) > slab_limit + {BREAK_MARGIN}) AS limit_break,
+           (NOT ex_session AND NOT no_limit
+            AND raw_ret_1 >= slab_limit - {HIT_TOLERANCE}
+            AND raw_ret_1 <= slab_limit + {HIT_TOLERANCE} + 0.11 / prev_close) AS hit_upper,
+           (NOT ex_session AND NOT no_limit
+            AND raw_ret_1 <= -slab_limit + {HIT_TOLERANCE}
+            AND raw_ret_1 >= -slab_limit - {HIT_TOLERANCE} - 0.11 / prev_close) AS hit_lower
     FROM lim
 ),
 grp AS (
@@ -106,17 +160,20 @@ grp AS (
     WINDOW w AS (PARTITION BY symbol ORDER BY date ROWS UNBOUNDED PRECEDING)
 )
 SELECT g.symbol, g.date, g.open, g.high, g.low, g.close, g.volume, g.source, g.date_quality,
-       g.prev_close, g.ret_1,
-       g.close / g.close_5  - 1 AS ret_5,
-       g.close / g.close_10 - 1 AS ret_10,
-       g.close / g.close_20 - 1 AS ret_20,
-       g.prev_close / g.close_6  - 1 AS ret_5_prev,    -- the same windows one session earlier,
-       g.prev_close / g.close_11 - 1 AS ret_10_prev,   -- so rules can fire when a threshold is
-       g.prev_close / g.close_21 - 1 AS ret_20_prev,   -- first crossed instead of every session
-       g.close_f5  / g.close - 1 AS fwd_5,
-       g.close_f20 / g.close - 1 AS fwd_20,
+       g.prev_close, g.ret_1, g.raw_ret_1, g.adj_factor,
+       g.aclose / g.close_5  - 1 AS ret_5,
+       g.aclose / g.close_10 - 1 AS ret_10,
+       g.aclose / g.close_20 - 1 AS ret_20,
+       g.prev_aclose / g.close_6  - 1 AS ret_5_prev,    -- the same windows one session earlier,
+       g.prev_aclose / g.close_11 - 1 AS ret_10_prev,   -- so rules can fire when a threshold is
+       g.prev_aclose / g.close_21 - 1 AS ret_20_prev,   -- first crossed instead of every session
+       g.close_f5  / g.aclose - 1 AS fwd_5,
+       g.close_f20 / g.aclose - 1 AS fwd_20,
        CASE WHEN g.avg_vol_20 > 0 THEN g.volume / g.avg_vol_20 END AS vol_ratio_20,
        g.slab_limit,
+       coalesce(g.ex_session, false) AS ex_session,
+       coalesce(g.no_limit, false) AS no_limit,
+       coalesce(g.limit_break, false) AS limit_break,
        coalesce(g.hit_upper, false) AS hit_upper,
        coalesce(g.hit_lower, false) AS hit_lower,
        CASE WHEN coalesce(g.hit_upper, false)

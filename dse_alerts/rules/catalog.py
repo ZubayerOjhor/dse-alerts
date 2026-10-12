@@ -38,6 +38,31 @@ def _threshold(ctx: RuleContext, days: int, direction: int, abs_pct: float | Non
     return (v, f"this stock's {days}-session {'5th' if direction < 0 else '95th'} percentile") if v else (None, "")
 
 
+def _prev_row(ctx: RuleContext) -> pd.Series | None:
+    """The session before the one being evaluated, if the context has it."""
+    return ctx.recent.iloc[-2] if len(ctx.recent) >= 2 else None
+
+
+def _prev_session(ctx: RuleContext) -> dt.date | None:
+    """The date of the session before ``as_of``, when the context has it and it is earlier."""
+    prev = _prev_row(ctx)
+    if prev is None:
+        return None
+    d = prev.get("date")
+    if d is None or (not isinstance(d, (dt.date, pd.Timestamp)) and pd.isna(d)):
+        return None
+    d = d.date() if isinstance(d, pd.Timestamp) else d
+    return d if isinstance(d, dt.date) and d < ctx.as_of else None
+
+
+def _unexplained_jump(ctx: RuleContext, sessions: int) -> bool:
+    """True when one of the last ``sessions`` rows moved beyond the price limit for no known
+    reason: a bonus issue or rights adjustment we have no record of, so the return is not real."""
+    if "limit_break" not in ctx.recent.columns:
+        return False
+    return bool(ctx.recent["limit_break"].tail(sessions).fillna(False).astype(bool).any())
+
+
 def _usual_range(ctx: RuleContext, days: int) -> str:
     lo, hi = ctx.stat("ret10_p05" if days <= 10 else "ret20_p05"), ctx.stat("ret10_p95" if days <= 10 else "ret20_p95")
     return f"{pct(lo)} to {pct(hi)}" if lo is not None and hi is not None else "n/a"
@@ -53,6 +78,8 @@ def _big_move(direction: int):
         if ret is None or thr is None:
             return None
         if (direction < 0 and ret > thr) or (direction > 0 and ret < thr):
+            return None
+        if _unexplained_jump(ctx, days):
             return None
         # fire when the threshold is first crossed, not on every session of the episode
         prev = ctx.val(f"{_DAYS[days][0]}_prev") if days > 1 else None
@@ -114,17 +141,33 @@ def _volume_spike(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
 
 def _range_break(side: str):
     def evaluate(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
+        # the range is kept on adjusted prices; today's adjusted close equals the printed one
+        # except on the session of a corporate action, when the factor says how to compare
         close, ref = ctx.val("close"), ctx.val("high_250" if side == "high" else "low_250")
+        factor = ctx.val("adj_factor") or 1.0
         if close is None or ref is None:
             return None
-        if (side == "high" and close <= ref) or (side == "low" and close >= ref):
+        aclose = close * factor
+        if (side == "high" and aclose <= ref) or (side == "low" and aclose >= ref):
             return None
+        if _unexplained_jump(ctx, 1):
+            return None
+        # once per episode: not again while the stock stays beyond the previous session's range
+        prev = _prev_row(ctx)
+        if prev is not None:
+            pref, pclose = prev.get("high_250" if side == "high" else "low_250"), prev.get("close")
+            pf = prev.get("adj_factor")
+            pf = 1.0 if pf is None or pd.isna(pf) else float(pf)
+            if (pref is not None and pclose is not None and not pd.isna(pref) and not pd.isna(pclose)
+                    and ((side == "high" and pclose * pf > pref) or (side == "low" and pclose * pf < pref))):
+                return None
+        ref_shown = ref / factor
         return Alert(
             symbol=ctx.row["symbol"], rule_id=f"new_250d_{side}", date=ctx.as_of,
             headline=f"{ctx.row['symbol']} closed at a 250-session {side}: {close:.1f}",
-            detail=f"Previous 250-session {side} was {ref:.1f}.",
+            detail=f"Previous 250-session {side} was {ref_shown:.1f}.",
             severity="notable",
-            evidence={"close": close, "previous_extreme": ref},
+            evidence={"close": close, "previous_extreme": ref_shown},
         )
     return evaluate
 
@@ -146,20 +189,49 @@ def _vs_index(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     )
 
 
+# What a filing is about, most consequential first. The headline leads with the top one.
+NEWS_PRIORITY = [
+    ("dividend", "dividend"), ("bonus", "dividend"), ("right", "rights"), ("eps", "results"), ("earning", "results"),
+    ("financial", "results"), ("profit", "results"), ("loss", "results"), ("nav", "results"),
+    ("acqui", "deal"), ("purchase", "deal"), ("land", "deal"), ("agreement", "deal"), ("contract", "deal"),
+    ("merger", "deal"), ("agm", "meeting"), ("egm", "meeting"), ("record date", "meeting"),
+    ("board", "meeting"), ("credit rating", "rating"), ("price limit", "routine"), ("bank", "routine"),
+    ("update of information", "routine"), ("spot", "routine"), ("suspen", "routine"), ("resum", "routine"),
+]
+
+
+def news_rank(title: str) -> int:
+    t = str(title).lower()
+    for i, (needle, _kind) in enumerate(NEWS_PRIORITY):
+        if needle in t:
+            return i
+    return len(NEWS_PRIORITY) - 1     # unknown: just above the routine notices
+
+
 def _psi_news(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
+    """Filings since the previous session, each alerted once; the headline leads with the
+    filing that matters most (dividends and results before routine notices)."""
     if ctx.news.empty:
         return None
-    since = pd.Timestamp(ctx.as_of - dt.timedelta(days=int(p.get("lookback_days", 2))))
-    recent = ctx.news[pd.to_datetime(ctx.news["date"], errors="coerce") >= since]
+    dates = pd.to_datetime(ctx.news["date"], errors="coerce")
+    prev = _prev_session(ctx)
+    since = pd.Timestamp(prev) if prev else pd.Timestamp(ctx.as_of - dt.timedelta(days=int(p.get("lookback_days", 2))))
+    recent = ctx.news[(dates > since) & (dates <= pd.Timestamp(ctx.as_of))] if prev else ctx.news[dates >= since]
     if recent.empty:
         return None
+    recent = recent.assign(_rank=recent["title"].map(news_rank)).sort_values(["_rank", "date"], ascending=[True, False])
     first = recent.iloc[0]
+    # the title repeats the trading code as a prefix; the headline already names the stock
+    title = str(first["title"])
+    if title.upper().startswith(ctx.row["symbol"].upper() + ":"):
+        title = title.split(":", 1)[1].strip()
     more = f" (+{len(recent) - 1} more)" if len(recent) > 1 else ""
+    routine = news_rank(first["title"]) >= news_rank("price limit")
     return Alert(
         symbol=ctx.row["symbol"], rule_id="psi_news", date=ctx.as_of,
-        headline=f"{ctx.row['symbol']} filed price-sensitive information: {str(first['title'])[:80]}{more}",
+        headline=f"{ctx.row['symbol']} filed price-sensitive information: {title[:80]}{more}",
         detail=str(first.get("body", ""))[:600],
-        severity="notable",
+        severity="info" if routine else "notable",
         evidence={"count": len(recent), "titles": recent["title"].astype(str).head(5).tolist()},
     )
 
@@ -172,6 +244,9 @@ def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     # to compare datetime64 with a plain date
     rd = pd.to_datetime(ctx.dividends["record_date"], errors="coerce")
     soon = ctx.dividends[(rd >= pd.Timestamp(ctx.as_of)) & (rd <= pd.Timestamp(ctx.as_of + dt.timedelta(days=within)))]
+    prev = _prev_session(ctx)
+    if prev is not None:   # once: only record dates that were not already within reach last session
+        soon = soon[pd.to_datetime(soon["record_date"], errors="coerce") > pd.Timestamp(prev + dt.timedelta(days=within))]
     if soon.empty:
         return None
     d = soon.iloc[0]
@@ -261,7 +336,7 @@ RULES: list[Rule] = [
          {}, "close < low_250", _range_break("low"), "notable"),
     Rule("vs_index", "Diverged from DSEX", "Moved at least 5 points more or less than the index on the day",
          {"pct": 0.05}, "abs(ret_1 - dsex_ret_1) >= 0.05", _vs_index, "notable"),
-    Rule("psi_news", "Price-sensitive news", "The company filed price-sensitive information in the last 2 days",
+    Rule("psi_news", "Price-sensitive news", "The company filed price-sensitive information since the previous session",
          {"lookback_days": 2}, None, _psi_news, "notable"),
     Rule("record_date", "Record date soon", "A dividend record date falls within the next 3 days",
          {"within_days": 3}, None, _record_date, "info"),

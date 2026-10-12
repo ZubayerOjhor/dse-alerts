@@ -43,7 +43,13 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
 * **Your data stays yours.** Everything runs on your machine, your own server or your own
   GitHub account. No telemetry, no accounts anywhere, no third party sees your holdings.
   Market data is fetched by you, from DSE, into a local DuckDB file. The browser talks only
-  to this server; the chart library is vendored.
+  to this server; the chart library is vendored. The one exception is opt-in: with the AI
+  note on, the alert text (codes, prices, percentages) goes to the provider that writes it.
+* **Comparable prices.** Returns, ranges, moving averages and thresholds are computed on
+  prices adjusted for bonus shares and rights issues (the archive's adjusted series, extended
+  with declared stock dividends after it ends). Sessions without a price limit, the day after
+  a record date and "Price Limit Open" days, are never counted as circuit hits, and a move
+  beyond the limit that nothing explains raises no alert at all.
 * **Alerts are facts, not advice.** "BEXIMCO closed at its upper circuit, 2.0 times a year
   for this stock" is an alert. "Buy BEXIMCO" is not, and the tool never says it.
 * **Measured, not guessed.** The data was audited before it was trusted, the thresholds come

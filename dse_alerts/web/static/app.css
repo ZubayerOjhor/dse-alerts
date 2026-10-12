@@ -223,3 +223,18 @@ th[title] { cursor: help; text-decoration: underline dotted; text-underline-offs
 .features { margin: 0; padding-left: 20px; line-height: 1.65; }
 .features li { margin-bottom: 4px; }
 @media (max-width: 760px) { .hero { grid-template-columns: 1fr; } .grid.cols-3 { grid-template-columns: 1fr; } .hero h1 { font-size: 24px; } }
+
+/* ---- phones: nothing wider than the screen ----------------------------------------- */
+@media (max-width: 760px) {
+  html, body { overflow-x: hidden; }
+  .top { flex-wrap: wrap; row-gap: 6px; }
+  nav.main { order: 3; flex: 1 1 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  nav.main::-webkit-scrollbar { display: none; }
+  .card, .tile { overflow-x: auto; }
+  table { min-width: 0; }
+  .page-head { flex-direction: column; align-items: flex-start; }
+  .hero .cta form, .hero .cta .btn { flex: 1 1 auto; text-align: center; }
+  .board { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .name { max-width: 120px; }
+}
+tr.repeat td { color: var(--muted); }

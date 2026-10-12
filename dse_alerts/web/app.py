@@ -25,11 +25,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from dse_alerts import engine, evidence, market, portfolio
 from dse_alerts.appdb import DEMO_EMAIL, AppDB, is_demo
@@ -161,9 +162,14 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        head = request.method == "HEAD"
+        if head:   # uptime monitors send HEAD; answer it like GET without a body
+            request.scope["method"] = "GET"
         resp = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             resp.headers.setdefault(k, v)
+        if head:
+            return Response(status_code=resp.status_code, headers=dict(resp.headers), media_type=resp.media_type)
         return resp
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
@@ -339,13 +345,20 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             raise HTTPException(status_code=404, detail="demo mode is off")
         return set_session(request, RedirectResponse("/", status_code=303), u["id"], u["password_hash"])
 
+    def registration_open() -> bool:
+        return settings.app_registration or appdb.operator_id() is None
+
     @app.get("/register", response_class=HTMLResponse)
     def register_page(request: Request):
+        if not registration_open():
+            raise HTTPException(status_code=404, detail="register.closed")
         return render(request, "register.html", error=None, first=not appdb.users())
 
     @app.post("/register")
     def register(request: Request, email: str = Form(...), password: str = Form(...), alert_to: str = Form("")):
         same_origin(request)
+        if not registration_open():
+            raise HTTPException(status_code=404, detail="register.closed")
         email = email.strip().lower()
         alert_to = alert_to.strip().lower()
         if len(password) < 8:
@@ -400,7 +413,8 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         if not user:
             if not appdb.users():
                 return RedirectResponse("/register", status_code=303)
-            return render(request, "home.html", active="home", market=market_status(), demo_available=demo_available(), **market_today())
+            return render(request, "home.html", active="home", market=market_status(), demo_available=demo_available(),
+                          registration=registration_open(), **market_today())
         request.state.user = user
         lang = lang_of(request, user)
         items, rows = watch_rows(user["id"])
@@ -649,18 +663,17 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         df = sc.outcomes(store, appdb, user["id"])
         agg = sc.by_rule(df, sc.load_expectation(settings))
         return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=_records(agg),
-                      pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df))
+                      pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df),
+                      episodes=int(df["episode_start"].sum()) if not df.empty else 0, min_episodes=sc.MIN_EPISODES)
 
     @app.get("/rules", response_class=HTMLResponse)
     def rules_page(request: Request, user=Depends(require_user)):
-        cal = {}
-        p = settings.dse_data_dir / "calibration.json"
-        if p.exists():
-            try:
-                cal = {e["event"]: e for e in json.loads(p.read_text(encoding="utf-8")).get("event_stats", [])}
-            except (ValueError, KeyError):
-                cal = {}
-        return render(request, "rules.html", active="rules", rules=RULES, opt_in=OPT_IN, cal=cal)
+        from dse_alerts.analysis.calibrate import load_calibration, rule_evidence
+
+        study = load_calibration(settings)
+        return render(request, "rules.html", active="rules", rules=RULES, opt_in=OPT_IN, cal=rule_evidence(settings),
+                      study={"first": str(study.get("first", ""))[:10], "last": str(study.get("last", ""))[:10],
+                             "symbols": study.get("symbols"), "sessions": study.get("sessions")} if study else None)
 
     def settings_ctx(user):
         from dse_alerts.notify import deliver
@@ -719,13 +732,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             return RedirectResponse("/settings?msg=settings.telegram_ok", status_code=303)
         return RedirectResponse("/settings?msg=settings.telegram_not_found", status_code=303)
 
-    @app.exception_handler(HTTPException)
+    @app.exception_handler(StarletteHTTPException)   # the router's own 404/405 are Starlette's class
     async def _redirects(request: Request, exc: HTTPException):
         if exc.status_code == 303:
             return RedirectResponse(exc.headers["Location"], status_code=303)
         request.state.user = current_user(request)
         lang = lang_of(request, request.state.user)
-        detail = t(lang, exc.detail) if isinstance(exc.detail, str) else exc.detail   # catalog keys translate; plain text passes through
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        if exc.status_code in (404, 405) and detail in ("Not Found", "Method Not Allowed"):
+            detail = f"error.{exc.status_code}"
+        detail = t(lang, detail)   # catalog keys translate; plain text passes through
         return render(request, "error.html", status_code=exc.status_code, status=exc.status_code, detail=detail)
 
     return app

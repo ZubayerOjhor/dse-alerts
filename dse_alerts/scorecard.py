@@ -10,13 +10,14 @@ an outcome into a recommendation.
 
 from __future__ import annotations
 
-import json
-
 import pandas as pd
 
 from dse_alerts.appdb import AppDB
 from dse_alerts.config import Settings
 from dse_alerts.data.store import MarketStore
+
+EPISODE_GAP_DAYS = 14   # alerts of one rule on one stock closer than this are the same episode
+MIN_EPISODES = 30       # fewer scored episodes than this: the numbers are shown as "too few"
 
 OUTCOME_SQL = """
 WITH idx AS (
@@ -48,36 +49,40 @@ def outcomes(store: MarketStore, appdb: AppDB, user_id: int) -> pd.DataFrame:
     df = alerts.merge(out, on=["symbol", "session_date"], how="left")
     df["excess_20"] = df["fwd_20"] - df["dsex_fwd_20"]
     df["status"] = df["fwd_20"].apply(lambda v: "scored" if pd.notna(v) else "pending")
+    df = df.sort_values(["symbol", "rule_id", "session_date"])
+    when = pd.to_datetime(df["session_date"], errors="coerce")
+    gap = when.groupby([df["symbol"], df["rule_id"]]).diff().dt.days
+    df["episode_start"] = gap.isna() | (gap > EPISODE_GAP_DAYS)   # the first alert of a run
     cols = ["symbol", "rule_id", "severity", "session_date", "headline", "close", "fwd_5", "fwd_20",
-            "dsex_fwd_5", "dsex_fwd_20", "excess_20", "status"]
+            "dsex_fwd_5", "dsex_fwd_20", "excess_20", "status", "episode_start"]
     return df[cols].sort_values(["session_date", "symbol"], ascending=[False, True]).reset_index(drop=True)
 
 
 def by_rule(df: pd.DataFrame, expectation: dict[str, dict] | None = None) -> pd.DataFrame:
     """Aggregate per rule: counts, realised medians, share positive, excess over DSEX, and
     the backtest's median 20-session move for comparison."""
+    cols = ["rule_id", "alerts", "episodes", "scored", "fwd5_median", "fwd20_median",
+            "fwd20_positive_share", "excess20_median", "backtest_fwd20_median", "enough"]
     if df.empty:
-        return pd.DataFrame(columns=["rule_id", "alerts", "scored", "fwd5_median", "fwd20_median",
-                                     "fwd20_positive_share", "excess20_median", "backtest_fwd20_median"])
-    g = df.groupby("rule_id")
+        return pd.DataFrame(columns=cols)
+    first = df[df["episode_start"]] if "episode_start" in df.columns else df   # one row per episode
+    g, ge = df.groupby("rule_id"), first.groupby("rule_id")
     agg = pd.DataFrame({
         "alerts": g.size(),
-        "scored": g["fwd_20"].count(),
-        "fwd5_median": g["fwd_5"].median(),
-        "fwd20_median": g["fwd_20"].median(),
-        "fwd20_positive_share": g["fwd_20"].apply(lambda s: (s.dropna() > 0).mean() if s.notna().any() else float("nan")),
-        "excess20_median": g["excess_20"].median(),
+        "episodes": ge.size(),
+        "scored": ge["fwd_20"].count(),
+        "fwd5_median": ge["fwd_5"].median(),
+        "fwd20_median": ge["fwd_20"].median(),
+        "fwd20_positive_share": ge["fwd_20"].apply(lambda s: (s.dropna() > 0).mean() if s.notna().any() else float("nan")),
+        "excess20_median": ge["excess_20"].median(),
     }).reset_index()
     exp = expectation or {}
     agg["backtest_fwd20_median"] = agg["rule_id"].map(lambda r: (exp.get(r) or {}).get("fwd20_median"))
-    return agg.sort_values("alerts", ascending=False).reset_index(drop=True)
+    agg["enough"] = agg["scored"] >= MIN_EPISODES
+    return agg[cols].sort_values("alerts", ascending=False).reset_index(drop=True)
 
 
 def load_expectation(settings: Settings) -> dict[str, dict]:
-    p = settings.dse_data_dir / "calibration.json"
-    if not p.exists():
-        return {}
-    try:
-        return {e["event"]: e for e in json.loads(p.read_text(encoding="utf-8")).get("event_stats", [])}
-    except (ValueError, KeyError, TypeError):
-        return {}
+    from dse_alerts.analysis.calibrate import rule_evidence
+
+    return rule_evidence(settings)

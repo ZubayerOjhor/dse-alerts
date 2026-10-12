@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     # Demo mode for a public instance: a "Try the demo" button logs visitors into a shared,
     # read-only account seeded with `dse demo seed`. Registration stays open.
     app_demo: bool = False
+    app_registration: bool = True     # 0 on a public instance that should offer the demo only
     # Google Search Console "HTML tag" verification token, if you want to claim the site there
     # (for example to ask for a Safe Browsing review). Rendered as a <meta> tag on every page.
     app_google_site_verification: str = ""

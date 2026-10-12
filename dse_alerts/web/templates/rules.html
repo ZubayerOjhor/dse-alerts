@@ -2,7 +2,7 @@
 {% set active = "rules" %}
 {% block title %}{{ t('rules.title') }} - dse-alerts{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ t('rules.title') }}</h1><div class="sub">{{ t('rules.sub') }}</div></div></div>
+<div class="page-head"><div><h1>{{ t('rules.title') }}</h1><div class="sub">{{ t('rules.sub') }}{% if study %} {{ t('rules.study', first=study.first, last=study.last, symbols=study.symbols) }}{% endif %}</div></div></div>
 <div class="card">
   <table>
     <thead><tr><th>{{ t('common.rule') }}</th><th>{{ t('rules.meaning') }}</th><th>{{ t('rules.defaults') }}</th><th class="num" title="{{ t('help.fires') }}">{{ t('rules.fires') }}</th><th class="num" title="{{ t('help.median20') }}">{{ t('rules.median20') }}</th><th class="num" title="{{ t('help.rose') }}">{{ t('rules.positive') }}</th></tr></thead>

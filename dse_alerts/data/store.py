@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS market_summary (
     total_value_mn  DOUBLE,
     market_cap_mn   DOUBLE
 );
+-- Cumulative adjustment for bonus shares and rights, from the curated archive's adjusted
+-- series (1 where unknown or after the archive). close * adj_factor is comparable across time.
+ALTER TABLE prices ADD COLUMN IF NOT EXISTS adj_factor DOUBLE DEFAULT 1;
 CREATE TABLE IF NOT EXISTS ingest_log (
     run_at      TIMESTAMP,
     source      VARCHAR,
@@ -159,13 +162,21 @@ class MarketStore:
         frame["date"] = pd.to_datetime(frame["date"]).dt.date
         frame["source"] = source
         frame["date_quality"] = df["date_quality"].values if "date_quality" in df.columns else "exact"
-        cols = "symbol, date, open, high, low, close, CAST(volume AS BIGINT), source, date_quality"
+        has_adj = "adj_factor" in df.columns
+        frame["adj_factor"] = pd.to_numeric(df["adj_factor"], errors="coerce").fillna(1.0).values if has_adj else 1.0
+        cols = "symbol, date, open, high, low, close, CAST(volume AS BIGINT), source, date_quality, adj_factor"
         with self.connect() as con:
             con.register("incoming", frame)
             before = con.execute("SELECT count(*) FROM prices").fetchone()[0]
             if source == "live":
-                con.execute(f"INSERT OR REPLACE INTO prices SELECT {cols} FROM incoming")
-            else:  # archive never overwrites live rows
+                # a live row replaces the archive's prices but keeps the adjustment the archive knew
+                con.execute(
+                    "INSERT OR REPLACE INTO prices "
+                    "SELECT i.symbol, i.date, i.open, i.high, i.low, i.close, CAST(i.volume AS BIGINT), i.source, "
+                    "i.date_quality, coalesce(p.adj_factor, 1) FROM incoming i "
+                    "LEFT JOIN prices p ON p.symbol = i.symbol AND p.date = i.date"
+                )
+            else:  # archive never overwrites live prices, but it does bring the adjustment factors
                 cols_i = ", ".join(
                     f"i.{c}" if not c.startswith("CAST") else "CAST(i.volume AS BIGINT)"
                     for c in cols.split(", ")
@@ -175,6 +186,11 @@ class MarketStore:
                     "LEFT JOIN prices p ON p.symbol = i.symbol AND p.date = i.date "
                     "WHERE p.symbol IS NULL"
                 )
+                if has_adj:
+                    con.execute(
+                        "UPDATE prices SET adj_factor = i.adj_factor FROM incoming i "
+                        "WHERE prices.symbol = i.symbol AND prices.date = i.date AND i.adj_factor IS NOT NULL"
+                    )
             # live: every incoming row is written (insert or replace); archive: only new keys
             n = len(frame) if source == "live" else con.execute("SELECT count(*) FROM prices").fetchone()[0] - before
             con.execute(

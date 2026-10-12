@@ -1,6 +1,8 @@
 #!/bin/sh
 # Daily chain for a long-running container: load data on an empty volume, then refresh,
 # rebuild features and run the alerts at 16:30 Bangladesh time on trading days (Sun-Thu).
+# If the exchange has not published the session yet, or a step fails, it tries again every
+# 30 minutes until 21:30, and only then gives the day up.
 # Used by docker-compose.yml (scheduler service) and by scripts/start.sh (single container).
 # Needs TZ=Asia/Dhaka in the environment so the clock below is Dhaka time.
 set -u
@@ -14,16 +16,28 @@ if [ "${APP_DEMO:-0}" = "1" ] || [ "${APP_DEMO:-}" = "true" ]; then
   dse demo seed || echo "[scheduler] demo seed failed; the web UI still works"
 fi
 
-last_run=""
+done_day=""
+next_try=0
 while true; do
   dow=$(date +%u)     # 1=Mon .. 7=Sun
   hm=$(date +%H%M)
   today=$(date +%F)
-  if { [ "$dow" -le 4 ] || [ "$dow" -eq 7 ]; } && [ "$hm" -ge 1630 ] && [ "$last_run" != "$today" ]; then
+  now=$(date +%s)
+  trading_day=0
+  if [ "$dow" -le 4 ] || [ "$dow" -eq 7 ]; then trading_day=1; fi
+  if [ "$trading_day" -eq 1 ] && [ "$hm" -ge 1630 ] && [ "$done_day" != "$today" ] && [ "$now" -ge "$next_try" ]; then
     echo "[scheduler] $today $hm: refresh, features, alerts"
-    dse data refresh && dse analysis features && dse alerts run || echo "[scheduler] run failed; will retry tomorrow"
-    if [ "$dow" -eq 7 ]; then dse data instruments || true; fi   # weekly company profiles
-    last_run="$today"
+    if dse data refresh && dse data latest --expect-today && dse analysis features && dse alerts run; then
+      if [ "$dow" -eq 7 ]; then dse data instruments || true; fi   # weekly company profiles
+      done_day="$today"
+      echo "[scheduler] $today done"
+    elif [ "$hm" -ge 2130 ]; then
+      echo "[scheduler] $today: no session published by 21:30 (holiday or outage); giving up for today"
+      done_day="$today"
+    else
+      echo "[scheduler] $today $hm: session not in yet or a step failed; retrying in 30 minutes"
+      next_try=$((now + 1800))
+    fi
   fi
   sleep 60
 done

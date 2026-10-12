@@ -9,12 +9,12 @@
   </div>
   <div class="row">
     {% if not item %}
-    <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.watch') }}</button></form>
-    <form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button class="primary">{{ t('symbol.mark_target') }}</button></form>
+    {% if not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.watch') }}</button></form>{% endif %}
+    {% if not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button class="primary">{{ t('symbol.mark_target') }}</button></form>{% endif %}
     {% elif item.kind != 'target' %}
-    <form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button>{{ t('symbol.mark_target') }}</button></form>
+    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button>{{ t('symbol.mark_target') }}</button></form>{% endif %}
     {% else %}
-    <form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.remove_target') }}</button></form>
+    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.remove_target') }}</button></form>{% endif %}
     {% endif %}
   </div>
 </div>

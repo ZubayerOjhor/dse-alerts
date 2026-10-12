@@ -47,7 +47,7 @@
       <td style="min-width:110px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div>{% endif %}</td>
       <td class="num">{{ r.pe | num if r.pe else "" }}</td>
       <td class="num">{{ (r.dividend_yield | num(2)) ~ '%' if r.dividend_yield else "" }}</td>
-      <td>{% if r.symbol in watched %}<span class="muted small">{{ t('find.watching') }}</span>{% else %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link">{{ t('find.watch') }}</button></form>{% endif %}</td>
+      <td>{% if r.symbol in watched %}<span class="muted small">{{ t('find.watching') }}</span>{% elif not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link">{{ t('find.watch') }}</button></form>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
