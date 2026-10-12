@@ -147,7 +147,7 @@ def _localized(rows, lang: str) -> list[dict]:
 
 def create_app(settings: Settings | None = None, store: MarketStore | None = None, appdb: AppDB | None = None) -> FastAPI:
     settings = settings or get_settings()
-    store = store or MarketStore(settings.market_db)
+    store = store or MarketStore(settings.market_db, prefer_snapshot=True)   # reads the published copy
     appdb = appdb or AppDB(settings.app_db)
     secret = settings.app_secret_key
     if not secret or secret == "change-me":

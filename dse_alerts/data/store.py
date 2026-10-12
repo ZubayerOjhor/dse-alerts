@@ -13,6 +13,7 @@ One file (``market.duckdb``) holds everything the alert engine reads:
 from __future__ import annotations
 
 import datetime as dt
+import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -136,20 +137,47 @@ def open_duckdb(path: Path | str | None = None, read_only: bool = False) -> duck
     return con
 
 
+SNAPSHOT_SUFFIX = ".snapshot.duckdb"
+
+
 class MarketStore:
-    def __init__(self, path: Path):
+    """The market database. Writers (the daily chain) use ``path``. A reader that passes
+    ``prefer_snapshot`` (the web UI) reads the last published copy instead, so pages keep
+    working while the chain holds the write lock for a minute; ``snapshot()`` publishes."""
+
+    def __init__(self, path: Path, prefer_snapshot: bool = False):
         self.path = Path(path)
+        self.snapshot_path = self.path.with_name(self.path.stem + SNAPSHOT_SUFFIX)
+        self.prefer_snapshot = prefer_snapshot
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as con:
             con.execute(SCHEMA)
 
     @contextmanager
     def connect(self, read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
-        con = open_duckdb(self.path, read_only=read_only)
+        target = self.path
+        if read_only and self.prefer_snapshot and self.snapshot_path.exists():
+            target = self.snapshot_path
+        con = open_duckdb(target, read_only=read_only)
         try:
             yield con
         finally:
             con.close()
+
+    def snapshot(self) -> Path:
+        """Publish a consistent copy for readers: checkpoint, copy to a temp file next to it,
+        then rename over the previous snapshot (atomic on the same filesystem)."""
+        import shutil
+
+        with self.connect() as con:
+            con.execute("CHECKPOINT")
+        tmp = self.snapshot_path.with_suffix(".tmp")
+        shutil.copyfile(self.path, tmp)
+        os.replace(tmp, self.snapshot_path)
+        wal = self.snapshot_path.with_suffix(self.snapshot_path.suffix + ".wal")
+        if wal.exists():
+            wal.unlink()
+        return self.snapshot_path
 
     # ---- writes -------------------------------------------------------------------------
 

@@ -131,5 +131,10 @@ charged without you adding a card, but the machine stops, so move the data out f
   `DSE_DUCKDB_THREADS=2` in `.env` on machines under 3 GB, so DuckDB spills to disk
   instead (measured: the build then peaks at about 450 MB resident, under 20 seconds). If the
   scheduler log ever shows `Killed`, add swap (`sudo fallocate -l 4G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2`) and restart. Do not go below `300MB`; DuckDB cannot finish the build under that.
+* **Why there are two database files:** the web UI reads `market.snapshot.duckdb`, a copy the
+  scheduler publishes after every run (`dse data snapshot`), so pages keep working while the
+  daily chain holds the write lock on `market.duckdb`. After copying a database in by hand,
+  restart the scheduler (it snapshots on start) or run
+  `sudo docker compose exec scheduler dse data snapshot`.
 * **Backups:** everything lives in the `dse-alerts_dse-data` Docker volume. Copy `app.sqlite`
   out of it occasionally: `sudo docker cp dse-alerts-web-1:/data/app.sqlite ./app-backup.sqlite`.

@@ -15,9 +15,13 @@ fi
 if [ "${APP_DEMO:-0}" = "1" ] || [ "${APP_DEMO:-}" = "true" ]; then
   dse demo seed || echo "[scheduler] demo seed failed; the web UI still works"
 fi
+# the web UI reads a published copy, so pages keep working while this chain writes
+dse data snapshot || echo "[scheduler] snapshot failed; the web UI reads the live file"
 
 done_day=""
 next_try=0
+# after a restart later in the day, do not redo a chain whose session is already in
+if dse data latest --expect-today >/dev/null 2>&1; then done_day=$(date +%F); fi
 while true; do
   dow=$(date +%u)     # 1=Mon .. 7=Sun
   hm=$(date +%H%M)
@@ -29,6 +33,7 @@ while true; do
     echo "[scheduler] $today $hm: refresh, features, alerts"
     if dse data refresh && dse data latest --expect-today && dse analysis features && dse alerts run; then
       if [ "$dow" -eq 7 ]; then dse data instruments || true; fi   # weekly company profiles
+      dse data snapshot || true
       done_day="$today"
       echo "[scheduler] $today done"
     elif [ "$hm" -ge 2130 ]; then

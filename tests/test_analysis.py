@@ -171,3 +171,18 @@ def test_rejected_notes_are_retried_once_then_dropped(monkeypatch):
     monkeypatch.setattr(ai, "_via_openai_compatible", lambda settings, prompt, **kw: calls.append(prompt) or "It will likely rebound 20%.")
     assert ai.write_digest_detailed(config.Settings(app_secret_key="t"), dt.date(2026, 10, 8), alerts, ["GP"], {}) == (None, None)
     assert len(calls) == 2
+
+
+def test_web_reads_the_published_snapshot(tmp_path):
+    import pandas as pd
+
+    writer = MarketStore(tmp_path / "m.duckdb")
+    dates = _dates(3)
+    writer.upsert_prices(pd.DataFrame({"symbol": "GP", "date": dates, "open": 1.0, "high": 1.0, "low": 1.0, "close": [1.0, 2.0, 3.0], "volume": 1}), source="live")
+    reader = MarketStore(tmp_path / "m.duckdb", prefer_snapshot=True)
+    assert reader.summary()["rows"] == 3                      # no snapshot yet: the live file
+    writer.snapshot()
+    writer.upsert_prices(pd.DataFrame({"symbol": "GP", "date": _dates(2, "2025-02-01"), "open": 1.0, "high": 1.0, "low": 1.0, "close": 4.0, "volume": 1}), source="live")
+    assert writer.summary()["rows"] == 5 and reader.summary()["rows"] == 3   # readers see the published copy
+    writer.snapshot()
+    assert reader.summary()["rows"] == 5
