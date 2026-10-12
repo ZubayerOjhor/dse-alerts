@@ -359,7 +359,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         pw_hash = hash_password(password)
         uid = appdb.ensure_user(email, pw_hash, alert_to or None)
         appdb.ensure_watchlist(uid)
-        first = len(appdb.users()) == 1   # the operator's own sign-up needs no confirmation
+        first = appdb.operator_id() == uid   # the operator's own sign-up needs no confirmation
         appdb.update_user(uid, lang=lang_of(request), email_confirmed=(alert_to or email) if first else None)
         if not first:
             send_confirmation(uid, alert_to or email)
@@ -665,7 +665,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     def settings_ctx(user):
         from dse_alerts.notify import deliver
 
-        admin = user["id"] == 1
+        admin = user["id"] == appdb.operator_id()
         return {"active": "settings", "runs": appdb.last_runs(10) if admin else [], "market": market_status(), "admin": admin,
                 "accounts": appdb.accounts(user["id"]), "email_on": settings.email_enabled,
                 "bot": deliver.telegram_bot_name(settings) if settings.telegram_enabled and user["telegram_code"] else ""}

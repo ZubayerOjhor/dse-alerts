@@ -190,6 +190,13 @@ class AppDB:
         with self.connect() as con:
             return con.execute("SELECT * FROM users ORDER BY id").fetchall()
 
+    def operator_id(self) -> int | None:
+        """The first real account: whoever set the installation up. The demo account, which a
+        public instance seeds before anyone signs up, never counts."""
+        with self.connect() as con:
+            row = con.execute("SELECT min(id) AS id FROM users WHERE email != ?", (DEMO_EMAIL,)).fetchone()
+            return row["id"] if row and row["id"] is not None else None
+
     def update_user(self, user_id: int, **fields: Any) -> None:
         allowed = {"alert_email", "digest_enabled", "password_hash", "telegram_chat_id", "lang",
                    "email_confirmed", "telegram_confirmed", "telegram_code"}

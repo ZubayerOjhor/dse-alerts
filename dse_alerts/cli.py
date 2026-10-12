@@ -446,7 +446,7 @@ def run(as_of: str = typer.Option(None, help="Evaluate the last session on or be
         if email and r.new_alerts and s.email_enabled and confirmed and deliver.send_email(s, r.alert_email, ctx):
             delivered = True
             rprint(f"emailed {r.alert_email}")
-        chat = (dict(u).get("telegram_confirmed") if u else None) or (s.telegram_chat_id if u and u["id"] == 1 else None)
+        chat = (dict(u).get("telegram_confirmed") if u else None) or (s.telegram_chat_id if u and u["id"] == db.operator_id() else None)
         if r.new_alerts and s.telegram_enabled and chat and deliver.send_telegram(s, chat, deliver.telegram_text(session, r.new_alerts, summary, ctx)):
             delivered = True
             rprint(f"telegram -> chat {chat}")

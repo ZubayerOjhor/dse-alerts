@@ -195,7 +195,8 @@ def test_demo_mode_is_read_only(tmp_path, env):
     assert demo.post("/watchlist/remove", data={"symbol": "GP", "csrf": csrf}).status_code == 403
     assert [i["symbol"] for i in db.items(uid)] == ["GP"]          # nothing changed
     assert demo.post("/alerts/check", data={"csrf": csrf}).status_code == 403   # it records alerts, so it is a write
-    assert demo.get("/settings").status_code == 200
+    assert "Recent runs" not in demo.get("/settings").text                 # operator details stay with the operator
+    assert db.operator_id() == db.user("me@example.com")["id"]
     # the demo address cannot be registered or logged into with a password
     assert "already has an account" in demo.post("/register", data={"email": DEMO_EMAIL, "password": "longenough"}).text
     assert "Wrong email" in demo.post("/login", data={"email": DEMO_EMAIL, "password": "anything"}).text
