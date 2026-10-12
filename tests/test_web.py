@@ -66,7 +66,7 @@ def test_first_visit_goes_to_register_then_dashboard(client):
     assert "Grameenphone" in watched and "ROBI" not in watched and 'class="spark' in watched
 
     r = client.get("/symbol/GP")
-    assert r.status_code == 200 and "Alert rules for GP" in r.text and "What is true right now" in r.text
+    assert r.status_code == 200 and "Change the alert rules for GP" in r.text and "What is true right now" in r.text
     assert "price-data" in r.text and "rel-data" in r.text and "sector median" in r.text
     r = client.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on", "big_drop__days": "10", "big_drop__pct": "5",
                                               "on_upper_circuit": "on", "on_pe_level": "on", "pe_level__max": "12", "note": "core holding"})
@@ -210,10 +210,10 @@ def test_ai_summary_card(env):
     assert "AI summary" in page and "GROQ_API_KEY" in page            # off: tells the user how to turn it on
     uid = db.user("me@example.com")["id"]
     # store a digest for the latest session and it shows on the overview
-    last = page.split("<strong>")[1].split("</strong>")[0]
+    last = page.split('<time datetime="')[1].split('"')[0]
     db.save_digest(uid, last, "A quiet session for your list.", "groq:llama-3.3-70b-versatile", "en")
     page = client.get("/").text
-    assert "A quiet session for your list." in page and "groq:llama-3.3-70b-versatile" in page
+    assert "A quiet session for your list." in page and "groq:llama" not in page   # the model id stays out of the page
     row = db.digest_for(uid, last)
     assert row["lang"] == "en" and row["provider"].startswith("groq")
 
@@ -228,7 +228,7 @@ def test_overview_writes_ai_note_and_follows_language(env, monkeypatch):
     client, db = env
     _register(client)
     uid = db.user("me@example.com")["id"]
-    last = client.get("/").text.split("<strong>")[1].split("</strong>")[0]
+    last = client.get("/").text.split('<time datetime="')[1].split('"')[0]
     db.record_alerts(uid, [Alert(symbol="GP", rule_id="big_rise", date=dt.date.fromisoformat(last), headline="GP up",
                                  detail="d", severity="notable", evidence={"ret": 0.1})])
     calls = []
@@ -242,7 +242,7 @@ def test_overview_writes_ai_note_and_follows_language(env, monkeypatch):
     monkeypatch.setattr(ai, "load_rule_evidence", lambda s: {})
 
     page = client.get("/").text
-    assert "note-in-en" in page and "fake:model" in page
+    assert "note-in-en" in page and "fake:model" not in page      # the note shows, the model id does not
     assert calls == [(dt.date.fromisoformat(last), ["GP"], "en")]
     assert client.get("/").status_code == 200
     assert len(calls) == 1                      # stored note is reused
@@ -374,7 +374,7 @@ def test_ai_notes_are_kept_per_language(env, monkeypatch):
     client, db = env
     _register(client)
     uid = db.user("me@example.com")["id"]
-    last = client.get("/").text.split("<strong>")[1].split("</strong>")[0]
+    last = client.get("/").text.split('<time datetime="')[1].split('"')[0]
     db.record_alerts(uid, [Alert(symbol="GP", rule_id="big_rise", date=dt.date.fromisoformat(last), headline="GP up",
                                  detail="d", severity="notable", evidence={"ret": 0.1})])
     calls = []

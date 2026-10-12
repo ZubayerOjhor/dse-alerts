@@ -30,18 +30,33 @@ def spark_path(values: list[float], w: int = 110, h: int = 30) -> str:
     return "M" + " L".join(f"{i * step:.1f},{h - (v - lo) / span * (h - 4) - 2:.1f}" for i, v in enumerate(vals))
 
 
+def spark_dir(values: list[float]) -> str:
+    """The colour of a sparkline: the sign of the change over the sessions it actually draws."""
+    vals = [v for v in values if v is not None and not pd.isna(v)]
+    if len(vals) < 2:
+        return ""
+    return "up" if vals[-1] > vals[0] else "down" if vals[-1] < vals[0] else ""
+
+
+def scaled_closes(closes, factor) -> list[float]:
+    """Adjusted closes put back on today's printed scale, so the line ends at the printed close
+    and a bonus issue is not a cliff."""
+    f = factor if factor is not None and not pd.isna(factor) and factor else 1.0
+    return [float(c) / f for c in (list(closes) if closes is not None else [])]
+
+
 def latest_rows(store: MarketStore, symbols: list[str], spark_sessions: int = 60) -> pd.DataFrame:
     """Latest session per symbol with name/category/sector and the last N closes (for sparklines)."""
     if not symbols:
         return pd.DataFrame(columns=["symbol", "date", "close", "prev_close", "ret_1", "ret_5", "ret_20", "vol_ratio_20", "hit_upper",
-                                     "hit_lower", "upper_streak", "lower_streak", "name", "category", "sector", "closes"])
+                                     "hit_lower", "upper_streak", "lower_streak", "name", "category", "sector", "closes", "spark", "spark_dir"])
     ph = ",".join("?" * len(symbols))
     with store.connect(read_only=True) as con:
         df = con.execute(
             f"""
             SELECT f.symbol, f.date, f.close, f.prev_close, f.ret_1, f.ret_5, f.ret_20, f.vol_ratio_20, f.hit_upper, f.hit_lower,
-                   f.upper_streak, f.lower_streak, i.name, i.category, i.sector,
-                   list(f.close) OVER (PARTITION BY f.symbol ORDER BY f.date ROWS BETWEEN {spark_sessions - 1} PRECEDING AND CURRENT ROW) AS closes
+                   f.upper_streak, f.lower_streak, f.adj_factor, i.name, i.category, i.sector,
+                   list(f.aclose) OVER (PARTITION BY f.symbol ORDER BY f.date ROWS BETWEEN {spark_sessions - 1} PRECEDING AND CURRENT ROW) AS closes
             FROM features f JOIN instruments i USING (symbol)
             WHERE f.symbol IN ({ph})
             QUALIFY row_number() OVER (PARTITION BY f.symbol ORDER BY f.date DESC) = 1
@@ -49,8 +64,9 @@ def latest_rows(store: MarketStore, symbols: list[str], spark_sessions: int = 60
             """,
             symbols,
         ).df()
-    df["closes"] = df["closes"].apply(lambda v: list(v) if v is not None else [])
+    df["closes"] = [scaled_closes(v, f) for v, f in zip(df["closes"], df["adj_factor"])]
     df["spark"] = df["closes"].apply(spark_path)
+    df["spark_dir"] = df["closes"].apply(spark_dir)
     return df
 
 
@@ -76,7 +92,7 @@ def ohlc(store: MarketStore, symbol: str, rng: str = "1y") -> dict:
     n = RANGE_SESSIONS.get(rng, 250)
     with store.connect(read_only=True) as con:
         df = con.execute(
-            "SELECT date, open, high, low, close, volume, sma_20, sma_50, prev_close FROM features WHERE symbol = ? ORDER BY date DESC LIMIT ?",
+            "SELECT date, open, high, low, close, volume, sma_20, sma_50, prev_close, adj_factor FROM features WHERE symbol = ? ORDER BY date DESC LIMIT ?",
             [symbol, n],
         ).df()
     df = df.iloc[::-1]
@@ -93,19 +109,23 @@ def ohlc(store: MarketStore, symbol: str, rng: str = "1y") -> dict:
         hi, lo = max(hi, o, c), min(lo, o, c)
         candles.append({"time": t, "open": o, "high": hi, "low": lo, "close": c})
         volume.append({"time": t, "value": _f(r.volume) or 0.0, "up": c >= (_f(r.prev_close) or o)})
+        # averages are kept on adjusted prices; divide by the session's factor to put them on
+        # the same printed scale as that session's candle
+        k = _f(r.adj_factor) or 1.0
         if _f(r.sma_20) is not None:
-            s20.append({"time": t, "value": round(float(r.sma_20), 2)})
+            s20.append({"time": t, "value": round(float(r.sma_20) / k, 2)})
         if _f(r.sma_50) is not None:
-            s50.append({"time": t, "value": round(float(r.sma_50), 2)})
+            s50.append({"time": t, "value": round(float(r.sma_50) / k, 2)})
     return {"symbol": symbol, "range": rng, "candles": candles, "volume": volume, "sma20": s20, "sma50": s50}
 
 
 def relative_series(store: MarketStore, symbol: str, sessions: int = 250) -> dict:
-    """Symbol and DSEX indexed to 100 at the first common session."""
+    """Symbol and DSEX indexed to 100 at the first common session. The symbol's line uses the
+    adjusted close, so it ends where the 250-session move on the page says it should."""
     with store.connect(read_only=True) as con:
         df = con.execute(
             """
-            SELECT f.date, f.close, i.dsex FROM features f JOIN index_daily i USING (date)
+            SELECT f.date, f.aclose AS close, i.dsex FROM features f JOIN index_daily i USING (date)
             WHERE f.symbol = ? AND i.dsex IS NOT NULL ORDER BY f.date DESC LIMIT ?
             """,
             [symbol, sessions],

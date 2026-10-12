@@ -4,15 +4,16 @@
 {% block content %}
 <div class="page-head"><div><h1>{{ t('rules.title') }}</h1><div class="sub">{{ t('rules.sub') }}{% if study %} {{ t('rules.study', first=study.first, last=study.last, symbols=study.symbols) }}{% endif %}</div></div></div>
 <div class="card">
+  <div class="table-wrap">
   <table>
-    <thead><tr><th>{{ t('common.rule') }}</th><th>{{ t('rules.meaning') }}</th><th>{{ t('rules.defaults') }}</th><th class="num" title="{{ t('help.fires') }}">{{ t('rules.fires') }}</th><th class="num" title="{{ t('help.median20') }}">{{ t('rules.median20') }}</th><th class="num" title="{{ t('help.rose') }}">{{ t('rules.positive') }}{% if base %}<div class="muted small" style="font-weight:normal">{{ t('rules.any_day', pct=base.positive) }}</div>{% endif %}</th></tr></thead>
+    <thead><tr><th>{{ t('common.rule') }}</th><th>{{ t('rules.meaning') }}</th><th class="hide-sm">{{ t('rules.defaults') }}</th><th class="num" title="{{ t('help.fires') }}">{{ t('rules.fires') }}</th><th class="num" title="{{ t('help.median20') }}">{{ t('rules.median20') }}</th><th class="num" title="{{ t('help.rose') }}">{{ t('rules.positive') }}{% if base %}<div class="muted small" style="font-weight:normal">{{ t('rules.any_day', pct=base.positive) }}</div>{% endif %}</th></tr></thead>
     <tbody>
     {% for r in rules %}
     {% set c = cal.get(r.id) %}
     <tr>
-      <td><strong>{{ t('rule.' ~ r.id ~ '.name') }}</strong><div class="muted small"><code>{{ r.id }}</code>{% if r.id in opt_in %} <span class="badge info">{{ t('rules.opt_in') }}</span>{% endif %}</div></td>
+      <td><strong>{{ t('rule.' ~ r.id ~ '.name') }}</strong>{% if r.id in opt_in %}<div><span class="badge info">{{ t('rules.opt_in') }}</span></div>{% endif %}</td>
       <td>{{ t('rule.' ~ r.id ~ '.desc') }}</td>
-      <td class="muted small">{% for k, v in r.params.items() %}{{ k }}={{ v if v is not none else t('rules.baseline') }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="muted small hide-sm">{% for k, v in r.params.items() %}{{ t('param.' ~ k) }}: {% if v is sameas true %}{{ t('common.yes') }}{% elif v is sameas false %}{{ t('common.no') }}{% elif v is none %}{{ t('rules.baseline') }}{% else %}{{ v }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</td>
       <td class="num">{% if c %}{{ c.per_250_sessions | num(2) }}{% else %}-{% endif %}</td>
       <td class="num">{% if c %}{{ c.fwd20_median | pct }}{% else %}-{% endif %}</td>
       <td class="num">{% if c %}{{ (c.fwd20_positive_share * 100) | round(0) | int }}%{% else %}-{% endif %}</td>
@@ -20,6 +21,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   <p class="help">{% if base %}{{ t('rules.base_note', pct=base.positive, median=base.median | pct) }} {% endif %}<a href="/learn#rules">{{ t('help.rules_link') }}</a></p>
 </div>
 {% endblock %}

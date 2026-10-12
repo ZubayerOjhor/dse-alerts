@@ -32,26 +32,28 @@
 <div class="card">
   <div class="row between" style="margin-bottom:8px"><h2 style="margin:0">{{ t('find.results', n=rows | length) }}{% if rows | length >= limit %} <span class="muted">({{ t('find.results_capped', n=limit) }})</span>{% endif %}</h2></div>
   {% if rows %}
+  <div class="table-wrap">
   <table class="compact">
-    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.sector') }}</th><th title="{{ t('help.cat') }}">{{ t('common.cat') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.session_1') }}</th><th class="num" title="{{ t('help.sessions_20') }}">{{ t('common.sessions_20') }}</th><th class="num" title="{{ t('help.vol20') }}">{{ t('common.vol20') }}</th><th title="{{ t('help.range_52w') }}">{{ t('common.range_52w') }}</th><th class="num" title="{{ t('help.pe') }}">{{ t('common.pe') }}</th><th class="num" title="{{ t('help.div_yield') }}">{{ t('common.div_yield') }}</th><th></th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th class="hide-sm">{{ t('common.sector') }}</th><th class="hide-sm" title="{{ t('help.cat') }}">{{ t('common.cat') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.session_1') }}</th><th class="num" title="{{ t('help.sessions_20') }}">{{ t('common.sessions_20') }}</th><th class="num hide-sm" title="{{ t('help.vol20') }}">{{ t('common.vol20') }}</th><th class="hide-sm" title="{{ t('help.range_52w') }}">{{ t('common.range_52w') }}</th><th class="num" title="{{ t('help.pe') }}">{{ t('common.pe') }}</th><th class="num hide-md" title="{{ t('help.div_yield') }}">{{ t('common.div_yield') }}</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       <td><a href="/symbol/{{ r.symbol }}"><strong>{{ r.symbol }}</strong></a><div class="muted small name" title="{{ r.name or '' }}">{{ r.name or "" }}</div></td>
-      <td class="muted small">{{ r.sector or "" }}</td>
-      <td>{% if r.category %}<span class="badge cat-{{ r.category }}">{{ r.category }}</span>{% endif %}</td>
+      <td class="muted small hide-sm">{{ r.sector or "" }}</td>
+      <td class="hide-sm">{% if r.category %}<span class="badge cat-{{ r.category }}">{{ r.category }}</span>{% endif %}</td>
       <td class="num">{{ r.close | num }}</td>
       <td class="num {{ 'up' if r.ret_1 and r.ret_1 > 0 else 'down' if r.ret_1 and r.ret_1 < 0 else '' }}">{{ r.ret_1 | pct }}{% if r.hit_upper %} <span class="badge up">{{ t('common.upper') }}</span>{% elif r.hit_lower %} <span class="badge down">{{ t('common.lower') }}</span>{% endif %}</td>
       <td class="num {{ 'up' if r.ret_20 and r.ret_20 > 0 else 'down' if r.ret_20 and r.ret_20 < 0 else '' }}">{{ r.ret_20 | pct }}</td>
-      <td class="num">{{ r.vol_ratio_20 | num }}x</td>
-      <td style="min-width:110px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div>{% endif %}</td>
+      <td class="num hide-sm">{{ r.vol_ratio_20 | num }}x</td>
+      <td class="hide-sm" style="min-width:110px">{% if r.range_pos is not none %}<div class="range"><i style="left: {{ (100 * r.range_pos) | round(0) }}%"></i></div>{% endif %}</td>
       <td class="num">{{ r.pe | num if r.pe else "" }}</td>
-      <td class="num">{{ (r.dividend_yield | num(2)) ~ '%' if r.dividend_yield else "" }}</td>
+      <td class="num hide-md">{{ (r.dividend_yield | num(2)) ~ '%' if r.dividend_yield else "" }}</td>
       <td>{% if r.symbol in watched %}<span class="muted small">{{ t('find.watching') }}</span>{% elif not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ r.symbol }}"><input type="hidden" name="kind" value="watch"><button class="link">{{ t('find.watch') }}</button></form>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
   <p class="help">{{ t('find.note') }} <a href="/learn#columns">{{ t('help.columns') }}</a></p>
   {% else %}<p class="muted">{{ t('find.none') }}</p>{% endif %}
 </div>

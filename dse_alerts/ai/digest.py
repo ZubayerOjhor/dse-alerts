@@ -89,9 +89,12 @@ def _words(ev: dict | None) -> dict:
 
 
 def notable(alerts: list[Alert]) -> bool:
-    """A note is worth writing only when something happened: a routine filing or an "info" alert
-    on its own gives the model nothing to describe, and it will pad."""
-    return any(a.severity in ("notable", "high") for a in alerts)
+    """A note is worth writing only when there is something to tie together: two or more
+    notable alerts, or one marked high. A single alert is already a sentence on the page, and a
+    note about it only restates it."""
+    highs = sum(1 for a in alerts if a.severity == "high")
+    notes = sum(1 for a in alerts if a.severity == "notable")
+    return highs >= 1 or notes >= 2
 
 
 def build_prompt(session: dt.date, alerts: list[Alert], symbols: list[str], evidence: dict[str, dict] | None = None) -> str:

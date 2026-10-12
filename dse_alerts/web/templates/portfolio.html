@@ -3,7 +3,7 @@
 {% block title %}{{ t('portfolio.title') }} - dse-alerts{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>{{ t('portfolio.title') }}</h1><div class="sub">{% if as_of %}{{ t('portfolio.sub', date=as_of) }}{% endif %}</div></div>
+  <div><h1>{{ t('portfolio.title') }}</h1><div class="sub">{% if as_of %}{{ t('portfolio.sub', date=as_of | d) }}{% endif %}</div></div>
 </div>
 
 {% if not total %}
@@ -34,40 +34,42 @@
     <div class="hbar"><span>{{ s.sector or t('market.other') }}</span><div class="bar"><span style="width: {{ (100 * s.weight) | round(1) }}%"></span></div><span class="num {{ 'up' if s.pnl > 0 else 'down' if s.pnl < 0 }}">{{ (100 * s.weight) | round(1) }}%, {{ '+' if s.pnl >= 0 }}{{ s.pnl | num(0) }}</span></div>
     {% endfor %}
     <h2 style="margin-top:16px">{{ t('portfolio.by_account') }}</h2>
-    <table class="compact"><thead><tr><th>{{ t('common.account') }}</th><th class="num">{{ t('common.positions') }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.today') | capitalize }}</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="compact"><thead><tr><th>{{ t('common.account') }}</th><th class="num">{{ t('common.positions') }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num">{{ t('common.pnl') }}</th><th class="num">{{ t('common.today') | capitalize }}</th></tr></thead><tbody>
     {% for a in accounts %}
     <tr><td>{{ a.account }}</td><td class="num">{{ a.positions }}</td><td class="num">{{ a.cost | num(0) }}</td><td class="num">{{ a.value | num(0) }}</td>
         <td class="num {{ 'up' if a.pnl > 0 else 'down' if a.pnl < 0 }}">{{ '+' if a.pnl >= 0 }}{{ a.pnl | num(0) }} ({{ a.pnl_pct | pct }})</td>
         <td class="num {{ 'up' if a.day_change > 0 else 'down' if a.day_change < 0 }}">{{ '+' if a.day_change >= 0 }}{{ a.day_change | num(0) }}</td></tr>
     {% endfor %}
-    </tbody></table>
+    </tbody></table></div>
   </div>
 </div>
 
 <div class="card">
   <h2>{{ t('portfolio.positions') }}</h2>
+  {% if total.bonus_shares %}<p class="muted small" style="margin-top:-6px">{{ t('portfolio.bonus_note') }}</p>{% endif %}
+  <div class="table-wrap">
   <table class="compact">
-    <thead><tr><th>{{ t('common.symbol') }}</th><th>{{ t('common.cat') }}</th><th>{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num" title="{{ t('help.avg_cost') }}">{{ t('common.avg_cost') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl_pct') }}</th><th class="num" title="{{ t('help.weight') }}">{{ t('common.weight') }}</th><th title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th class="hide-md">{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num" title="{{ t('help.avg_cost') }}">{{ t('common.avg_cost') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl_pct') }}</th><th class="num hide-md" title="{{ t('help.weight') }}">{{ t('common.weight') }}</th><th class="hide-sm" title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th></tr></thead>
     <tbody>
     {% for acc in positions_by_account %}
-    <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>
+    <tr class="rowgroup"><td colspan="12">{{ acc.name }}</td></tr>
     {% for p in acc.rows %}
     <tr>
-      <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a><div class="muted small name" title="{{ p.name or '' }}">{{ p.name or "" }}</div></td>
-      <td>{% if p.category %}<span class="badge cat-{{ p.category }}">{{ p.category }}</span>{% endif %}</td>
-      <td class="muted small">{{ p.sector or "" }}</td>
-      <td class="num">{{ p.quantity | num(0) }}</td><td class="num">{{ p.avg_cost | num(2) }}</td><td class="num">{{ p.close | num }}</td>
+      <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a>{% if p.category and p.category != 'A' %} <span class="badge cat-{{ p.category }}" title="{{ t('help.cat') }}">{{ p.category }}</span>{% endif %}<div class="muted small name" title="{{ p.name or '' }}">{{ p.name or "" }}</div></td>
+      <td class="muted small hide-md">{{ p.sector or "" }}</td>
+      <td class="num">{{ p.quantity | num(0) }}{% if p.bonus_shares %}<div class="muted small nowrap">{{ t('common.bonus_incl', n=p.bonus_shares | num(0)) }}</div>{% endif %}</td><td class="num">{{ p.avg_cost | num(2) }}</td><td class="num">{{ p.close | num }}</td>
       <td class="num {{ 'up' if p.ret_1 and p.ret_1 > 0 else 'down' if p.ret_1 and p.ret_1 < 0 else '' }}">{{ p.ret_1 | pct }}</td>
       <td class="num">{{ p.cost | num(0) }}</td><td class="num">{{ p.value | num(0) }}</td>
       <td class="num {{ 'up' if p.pnl > 0 else 'down' if p.pnl < 0 }}">{{ '+' if p.pnl >= 0 }}{{ p.pnl | num(0) }}</td>
       <td class="num {{ 'up' if p.pnl > 0 else 'down' if p.pnl < 0 }}">{{ p.pnl_pct | pct }}</td>
-      <td class="num">{{ (100 * p.weight) | round(1) }}%</td>
-      <td><svg class="spark {{ 'up' if p.ret_20 and p.ret_20 > 0 else 'down' if p.ret_20 and p.ret_20 < 0 else '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ p.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
+      <td class="num hide-md">{{ (100 * p.weight) | round(1) }}%</td>
+      <td class="hide-sm"><svg class="spark {{ p.spark_dir or '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ p.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
     </tr>
     {% endfor %}
     {% endfor %}
     </tbody>
   </table>
+  </div>
   <p class="help"><a href="/learn#portfolio">{{ t('help.portfolio_link') }}</a></p>
 </div>
 {% endif %}

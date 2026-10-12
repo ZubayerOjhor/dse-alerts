@@ -201,6 +201,9 @@ NEWS_PRIORITY = [
     ("board", "meeting"), ("credit rating", "rating"), ("price limit", "routine"), ("bank", "routine"),
     ("update of information", "routine"), ("spot", "routine"), ("suspen*", "routine"), ("resum*", "routine"),
 ]
+# filings that change what a holder owns or knows; everything else (meetings, routine notices)
+# is recorded as "info"
+NOTABLE_NEWS = {"dividend", "rights", "results", "deal", "rating"}
 _NEWS_PATTERNS = [re.compile(r"\b" + re.escape(n[:-1]) + r"\w*" if n.endswith("*") else r"\b" + re.escape(n) + r"\b")
                   for n, _kind in NEWS_PRIORITY]
 
@@ -231,12 +234,13 @@ def _psi_news(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     if title.upper().startswith(ctx.row["symbol"].upper() + ":"):
         title = title.split(":", 1)[1].strip()
     more = f" (+{len(recent) - 1} more)" if len(recent) > 1 else ""
-    routine = news_rank(first["title"]) >= news_rank("price limit")
+    rank = news_rank(first["title"])
+    kind = NEWS_PRIORITY[rank][1] if rank < len(NEWS_PRIORITY) else "routine"
     return Alert(
         symbol=ctx.row["symbol"], rule_id="psi_news", date=ctx.as_of,
         headline=f"{ctx.row['symbol']} filed price-sensitive information: {title[:80]}{more}",
         detail=str(first.get("body", ""))[:600],
-        severity="info" if routine else "notable",
+        severity="notable" if kind in NOTABLE_NEWS else "info",
         evidence={"count": len(recent), "titles": recent["title"].astype(str).head(5).tolist()},
     )
 

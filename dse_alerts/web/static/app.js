@@ -16,6 +16,20 @@
     var n = parseInt(h, 16); return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")";
   }
   function fmt(v, d) { if (v === null || v === undefined || isNaN(v)) return "–"; return Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  /* axis labels: thousands separators like the tiles (5,405 not 5404), millions as 7.5M */
+  function axis(v) {
+    var a = Math.abs(v);
+    if (a >= 1e6) return (v / 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 }) + "M";
+    return Number(v).toLocaleString(undefined, { maximumFractionDigits: a >= 1000 ? 0 : a >= 100 ? 1 : 2 });
+  }
+  /* charts size themselves to the container; after a resize or a rotated phone the visible
+     range is fitted again so the whole series stays in view */
+  function watchResize(container, chart) {
+    var timer;
+    function fit() { clearTimeout(timer); timer = setTimeout(function () { try { chart.timeScale().fitContent(); } catch (e) { /* removed */ } }, 120); }
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(container);
+    window.addEventListener("orientationchange", fit);
+  }
   function pct(v) { if (v === null || v === undefined || isNaN(v)) return "–"; return (v >= 0 ? "+" : "") + (100 * v).toFixed(1) + "%"; }
 
   /* ---- theme ---------------------------------------------------------------- */
@@ -43,7 +57,8 @@
       crosshair: { mode: LW.CrosshairMode.Normal,
                    vertLine: { color: c.muted, width: 1, style: LW.LineStyle.Solid, labelBackgroundColor: c.muted },
                    horzLine: { color: c.muted, width: 1, style: LW.LineStyle.Solid, labelBackgroundColor: c.muted } },
-      autoSize: true, handleScale: { axisPressedMouseMove: false }
+      autoSize: true, handleScale: { axisPressedMouseMove: false },
+      localization: { priceFormatter: axis }
     };
   }
   function legendEl(container) {
@@ -99,6 +114,7 @@
     }
     chart.subscribeCrosshairMove(showLegend);
     load(data);
+    watchResize(container, chart);
     var h = { chart: chart, load: load, recolor: function () {
       c = colors(); chart.applyOptions(baseOptions(c));
       candles.applyOptions({ upColor: c.up, downColor: c.down, wickUpColor: c.up, wickDownColor: c.down });
@@ -134,6 +150,7 @@
       }));
     }
     chart.subscribeCrosshairMove(showLegend); showLegend(null);
+    watchResize(container, chart);
     var handle = { chart: chart, recolor: function () { c = colors(); chart.applyOptions(baseOptions(c)); handles.forEach(function (h, i) { if (!series[i].color) { h.color = [c.s1, c.s2, c.s3, c.s4][i % 4]; h.api.applyOptions(series[i].area ? { lineColor: h.color, topColor: alpha(h.color, 0.25), bottomColor: alpha(h.color, 0.02) } : { color: h.color }); } }); showLegend(null); } };
     charts.push(handle); return handle;
   }

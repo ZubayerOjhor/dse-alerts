@@ -5,24 +5,25 @@
 <div class="page-head"><div><h1>{{ t('alerts.title') }}</h1><div class="sub">{{ t('alerts.sub') }}</div></div></div>
 <div class="card">
   {% if alerts %}
+  <div class="table-wrap">
   <table class="compact">
-    <thead><tr><th>{{ t('common.session') }}</th><th></th><th>{{ t('common.symbol') }}</th><th>{{ t('common.what_happened') }}</th><th>{{ t('common.rule') }}</th><th>{{ t('common.delivered') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.session') }}</th><th>{{ t('common.symbol') }}</th><th>{{ t('common.what_happened') }}</th><th class="hide-sm">{{ t('common.rule') }}</th><th class="hide-sm">{{ t('common.delivered') }}</th></tr></thead>
     <tbody>
     {% for a in alerts %}
     {% if loop.first or a.session_date != loop.previtem.session_date %}{% set d = digests.get(a.session_date) %}{% if d %}
-    <tr class="digest-row"><td class="muted">{{ a.session_date }}</td><td><span class="ai-tag">AI</span></td><td colspan="4"><div class="digest small">{{ d.text }}</div><div class="muted small">{{ t('ai.by', provider=d.provider or 'AI') }}</div></td></tr>
+    <tr class="digest-row"><td class="muted nowrap">{{ a.session_date | d }}</td><td><span class="ai-tag">AI</span></td><td colspan="3"><div class="digest small">{{ d.text }}</div><div class="muted small">{{ t('ai.by') }}</div></td></tr>
     {% endif %}{% endif %}
     <tr>
-      <td class="muted">{{ a.session_date }}</td>
-      <td><span class="dot {{ a.severity }}"></span></td>
+      <td class="muted nowrap">{{ a.session_date | d }}</td>
       <td><a href="/symbol/{{ a.symbol }}"><strong>{{ a.symbol }}</strong></a></td>
-      <td>{{ a.headline }}<div class="detail">{{ a.detail }}</div></td>
-      <td class="muted"><span title="{{ a.rule_id }}">{{ t('rule.' ~ a.rule_id ~ '.name') }}</span></td>
-      <td class="muted">{{ t('common.yes') if a.delivered_at else "" }}</td>
+      <td>{{ a.headline }} <span class="sev {{ a.severity }}">{{ t('severity.' ~ a.severity) }}</span><div class="detail">{{ a.detail }}</div></td>
+      <td class="muted hide-sm">{{ t('rule.' ~ a.rule_id ~ '.name') }}</td>
+      <td class="muted hide-sm">{{ t('common.yes') if a.delivered_at else "" }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}<p class="muted">{{ t('alerts.none') }}</p>{% endif %}
 </div>
 {% endblock %}

@@ -108,6 +108,10 @@ def test_news_rule_alerts_each_filing_once_and_leads_with_what_matters():
     a = psi(ctx(1), {})
     assert a is not None and "35% Cash Dividend" in a.headline and "(+2 more)" in a.headline and a.severity == "notable"
     assert psi(ctx(2), {}) is None                                # the next session does not repeat it
+    meeting = news.iloc[[1]].assign(title="X: Board meeting on 26 October")
+    ctx1 = RuleContext(row=recent.iloc[1], stats=None, instrument=None, fundamentals=None, news=meeting, dividends=pd.DataFrame(),
+                       recent=recent.iloc[:2], as_of=dates[1])
+    assert psi(ctx1, {}).severity == "info"                       # a meeting notice is routine until it decides something
     assert news_rank("X: Price Limit Open") > news_rank("X: Purchase of Land") > news_rank("X: Declaration of Dividend")
 
 
@@ -154,7 +158,7 @@ def test_rejected_notes_are_retried_once_then_dropped(monkeypatch):
     from dse_alerts.rules import Alert
 
     alerts = [Alert(symbol="GP", rule_id="big_rise", date=dt.date(2026, 10, 8), headline="GP up 9.8% over 10 sessions", detail="Close 300.0.",
-                    severity="notable", evidence={"ret": 0.098, "days": 10, "close": 300.0})]
+                    severity="high", evidence={"ret": 0.098, "days": 10, "close": 300.0})]
     calls = []
 
     def fake(settings, prompt, **kw):

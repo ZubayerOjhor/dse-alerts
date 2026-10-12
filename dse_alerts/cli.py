@@ -53,8 +53,9 @@ def seed(backfill: int = typer.Option(40, help="Sessions of alert history to com
          reset: bool = typer.Option(False, help="Drop the demo account's lists and holdings first")):
     """Create or refresh the demo account: sample watchlist, targets, a synthetic portfolio, alert history.
 
-    The portfolio is round lots priced at the close of about a year ago; it is nobody's real
-    holdings. The account has no password: only the "Try the demo" button logs into it.
+    The portfolio is round lots priced at the close of about a year ago, with that date as the
+    statement date so bonus shares declared since are added; it is nobody's real holdings.
+    The account has no password: only the "Try the demo" button logs into it.
     """
     from dse_alerts import engine
     from dse_alerts.appdb import DEMO_EMAIL
@@ -80,10 +81,10 @@ def seed(backfill: int = typer.Option(40, help="Sessions of alert history to com
             db.add_item(wl, sym, {}, kind="target")
     # a year-old close as the purchase price gives a realistic spread of gains and losses
     with store.connect(read_only=True) as con:
-        costs = {r[0]: float(r[1]) for r in con.execute(
+        costs = {r[0]: (float(r[1]), str(r[2])) for r in con.execute(
             """
-            SELECT symbol, close FROM (
-                SELECT symbol, close, row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn FROM features WHERE close > 0
+            SELECT symbol, close, date FROM (
+                SELECT symbol, close, date, row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn FROM features WHERE close > 0
             ) WHERE rn = 250
             """).fetchall()}
         latest = {r[0]: float(r[1]) for r in con.execute(
@@ -92,9 +93,9 @@ def seed(backfill: int = typer.Option(40, help="Sessions of alert history to com
     for account, lots in DEMO_HOLDINGS.items():
         acc = db.ensure_account(uid, account)
         for sym, qty in lots:
-            price = costs.get(sym) or latest.get(sym)
+            price, when = costs.get(sym) or (latest.get(sym), None)
             if sym in known and price:
-                db.upsert_holding(acc, sym, qty, round(price, 1), note="demo")
+                db.upsert_holding(acc, sym, qty, round(price, 1), statement_price=round(price, 1), statement_date=when, note="demo")
                 n += 1
     rprint(f"demo account #{uid}: {len(db.items(uid))} symbols, {n} holdings")
     if backfill > 0:

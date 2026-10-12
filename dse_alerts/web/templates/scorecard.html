@@ -4,14 +4,35 @@
 {% block content %}
 <div class="page-head"><div><h1>{{ t('scorecard.title') }}</h1><div class="sub">{{ t('scorecard.sub', total=total, pending=pending, episodes=episodes) }}</div></div></div>
 
+{% if chart and base %}
 <div class="card">
-  <h2>{{ t('scorecard.by_rule') }}</h2>
+  <h2>{{ t('scorecard.chart_t') }}</h2>
+  <p class="muted small" style="margin:-4px 0 12px">{{ t('scorecard.chart_note', pct=base.positive) }}</p>
+  <div class="dots">
+    <div class="dotrow ticks"><div></div><div class="track"><span style="left:0">25%</span><span class="mid" style="left: {{ (base.positive - 25) * 2 }}%">{{ t('scorecard.any_session', pct=base.positive) }}</span><span style="left:100%">75%</span></div><div></div></div>
+    {% for c in chart %}
+    {% set x = [[((c.share * 100) - 25) * 2, 0] | max, 100] | min %}
+    <div class="dotrow">
+      <div class="lbl"><strong>{{ t('rule.' ~ c.id ~ '.name') }}</strong><div class="muted small">{{ t('scorecard.chart_sub', n=c.per_year | num(1), med=c.median | pct) }}</div></div>
+      <div class="track"><i class="base" style="left: {{ (base.positive - 25) * 2 }}%"></i><b class="dot {{ 'up' if c.share * 100 > base.positive else 'down' }}" style="left: {{ x | round(1) }}%"></b></div>
+      <div class="num val {{ 'up' if c.share * 100 > base.positive else 'down' }}">{{ (c.share * 100) | round(0) | int }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="help"><a href="/rules">{{ t('scorecard.rules_link') }}</a> <a href="/learn#scorecard">{{ t('help.scorecard_link') }}</a></p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>{{ t('scorecard.live_t') }}</h2>
   {% if by_rule %}
+  {% if any_enough %}
+  <div class="table-wrap">
   <table>
     <thead><tr><th>{{ t('common.rule') }}</th><th class="num">{{ t('scorecard.alerts') }}</th><th class="num" title="{{ t('help.episodes') }}">{{ t('scorecard.episodes') }}</th><th class="num">{{ t('scorecard.scored') }}</th><th class="num" title="{{ t('help.fwd5') }}">{{ t('scorecard.fwd5') }}</th><th class="num" title="{{ t('help.fwd20') }}">{{ t('scorecard.fwd20') }}</th><th class="num" title="{{ t('help.positive') }}">{{ t('scorecard.positive') }}{% if base %}<div class="muted small" style="font-weight:normal">{{ t('rules.any_day', pct=base.positive) }}</div>{% endif %}</th><th class="num" title="{{ t('help.vs_dsex') }}">{{ t('scorecard.vs_dsex') }}</th><th class="num" title="{{ t('help.backtest') }}">{{ t('scorecard.backtest') }}</th></tr></thead>
     <tbody>
     {% for r in by_rule %}
-    <tr><td><strong>{{ t('rule.' ~ r.rule_id ~ '.name') }}</strong> <code class="muted small">{{ r.rule_id }}</code></td><td class="num">{{ r.alerts }}</td><td class="num">{{ r.episodes }}</td><td class="num">{{ r.scored }}</td>
+    <tr><td><strong>{{ t('rule.' ~ r.rule_id ~ '.name') }}</strong></td><td class="num">{{ r.alerts }}</td><td class="num">{{ r.episodes }}</td><td class="num">{{ r.scored }}</td>
         {% if r.enough %}
         <td class="num">{{ r.fwd5_median | pct }}</td><td class="num">{{ r.fwd20_median | pct }}</td>
         <td class="num">{% if r.fwd20_positive_share is not none %}{{ (r.fwd20_positive_share * 100) | round(0) | int }}%{% else %}-{% endif %}</td>
@@ -21,25 +42,35 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:-4px">{{ t('scorecard.live_wait', need=min_episodes, episodes=episodes, rules=by_rule | length) }}</p>
+  <table class="compact" style="max-width:520px">
+    <thead><tr><th>{{ t('common.rule') }}</th><th class="num">{{ t('scorecard.alerts') }}</th><th class="num" title="{{ t('help.episodes') }}">{{ t('scorecard.episodes') }}</th><th class="num">{{ t('scorecard.scored') }}</th></tr></thead>
+    <tbody>{% for r in by_rule %}<tr><td>{{ t('rule.' ~ r.rule_id ~ '.name') }}</td><td class="num">{{ r.alerts }}</td><td class="num">{{ r.episodes }}</td><td class="num">{{ r.scored }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
   {% else %}<p class="muted">{{ t('scorecard.none') }}</p>{% endif %}
-  <p class="help">{{ t('scorecard.episode_note', need=min_episodes) }} <a href="/learn#scorecard">{{ t('help.scorecard_link') }}</a></p>
+  <p class="help">{{ t('scorecard.episode_note', need=min_episodes) }}</p>
 </div>
 
 {% if rows %}
 <div class="card">
   <h2>{{ t('scorecard.every') }}</h2>
+  <div class="table-wrap">
   <table class="compact">
-    <thead><tr><th>{{ t('common.session') }}</th><th>{{ t('common.symbol') }}</th><th>{{ t('common.alert') }}</th><th class="num">{{ t('common.close') }}</th><th class="num" title="{{ t('help.fwd5') }}">{{ t('scorecard.after5') }}</th><th class="num" title="{{ t('help.fwd20') }}">{{ t('scorecard.after20') }}</th><th class="num">{{ t('scorecard.dsex20') }}</th><th>{{ t('common.status') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.session') }}</th><th>{{ t('common.symbol') }}</th><th>{{ t('common.alert') }}</th><th class="num hide-sm">{{ t('common.close') }}</th><th class="num" title="{{ t('help.fwd5') }}">{{ t('scorecard.after5') }}</th><th class="num" title="{{ t('help.fwd20') }}">{{ t('scorecard.after20') }}</th><th class="num hide-sm">{{ t('scorecard.dsex20') }}</th><th class="hide-sm">{{ t('common.status') }}</th></tr></thead>
     <tbody>
     {% for a in rows %}
-    <tr class="{{ '' if a.episode_start else 'repeat' }}"><td class="muted">{{ a.session_date }}</td><td><a href="/symbol/{{ a.symbol }}">{{ a.symbol }}</a></td><td>{{ a.headline }}{% if not a.episode_start %} <span class="muted small">{{ t('scorecard.repeat') }}</span>{% endif %}</td>
-        <td class="num">{{ a.close | num }}</td>
+    <tr class="{{ '' if a.episode_start else 'repeat' }}"><td class="muted nowrap">{{ a.session_date | d }}</td><td><a href="/symbol/{{ a.symbol }}">{{ a.symbol }}</a></td><td>{{ a.headline }}{% if not a.episode_start %} <span class="muted small">{{ t('scorecard.repeat') }}</span>{% endif %}</td>
+        <td class="num hide-sm">{{ a.close | num }}</td>
         <td class="num {{ 'up' if a.fwd_5 is not none and a.fwd_5 > 0 else 'down' if a.fwd_5 is not none and a.fwd_5 < 0 else '' }}">{{ a.fwd_5 | pct }}</td>
         <td class="num {{ 'up' if a.fwd_20 is not none and a.fwd_20 > 0 else 'down' if a.fwd_20 is not none and a.fwd_20 < 0 else '' }}">{{ a.fwd_20 | pct }}</td>
-        <td class="num muted">{{ a.dsex_fwd_20 | pct }}</td><td><span class="badge {{ 'info' if a.status == 'scored' else 'warn' }}">{{ t('status.' ~ a.status) }}</span></td></tr>
+        <td class="num muted hide-sm">{{ a.dsex_fwd_20 | pct }}</td><td class="hide-sm"><span class="badge {{ 'info' if a.status == 'scored' else 'warn' }}">{{ t('status.' ~ a.status) }}</span></td></tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

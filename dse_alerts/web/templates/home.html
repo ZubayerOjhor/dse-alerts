@@ -12,12 +12,12 @@
     </div>
     <p class="muted small">{{ t('home.privacy') }}{% if demo_available %} {{ t('home.demo_note') }}{% endif %}</p>
   </div>
-  <div class="tile">
-    <div class="label">DSEX</div>
-    <div class="value">{{ index.close | num(0) }}</div>
-    <div class="delta {{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }} {{ t('common.today') }}</div>
-    <div class="note">{{ index.ret_20 | pct }} {{ t('common.over_20') }}</div>
-    <div class="note">{{ t('dash.latest_session') }} {{ market.last_session or t('dash.no_data') }}</div>
+  <div class="card sample">
+    <h2>{{ t('home.sample_t') }}</h2>
+    <div class="alert notable"><div class="head">{{ t('home.sample_head') }} <span class="sev notable">{{ t('severity.notable') }}</span></div><div class="detail">{{ t('home.sample_detail') }}</div></div>
+    <div class="alert info"><div class="head">{{ t('home.sample_head2') }} <span class="sev info">{{ t('severity.info') }}</span></div><div class="detail">{{ t('home.sample_detail2') }}</div></div>
+    <p class="muted small" style="margin:10px 0 0">{{ t('home.sample_note') }}</p>
+    <div class="row between small" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><span><strong>DSEX</strong> {{ index.close | num(0) }} <span class="{{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }}</span></span><span class="muted">{{ t('dash.latest_session') }} {{ market.last_session | d }}</span></div>
   </div>
 </section>
 
@@ -35,8 +35,9 @@
     <div class="board">
       {% for s in board %}
       {% set m = s.ret_1 or 0 %}
-      {% set cls = 'up3' if m > 0.03 else 'up2' if m > 0.012 else 'up1' if m > 0.002 else 'dn3' if m < -0.03 else 'dn2' if m < -0.012 else 'dn1' if m < -0.002 else '' %}
-      <div class="cell {{ cls }}" title="{{ t('market.up_down', up=s.up | int, down=s.down | int) }}">
+      {% set k = [((m | abs) / 0.03 * 55) | round(0) | int, 55] | min %}
+      {% set cls = ('up up' if m > 0 else 'dn dn') ~ ('3' if (m | abs) > 0.03 else '2' if (m | abs) > 0.012 else '1' if (m | abs) > 0.002 else '0') %}
+      <div class="cell {{ cls if m != 0 else '' }}" style="--k: {{ [k, 6] | max }}%" title="{{ t('market.up_down', up=s.up | int, down=s.down | int) }}">
         <div class="sector">{{ s.sector }}</div>
         <div><div class="move">{{ s.ret_1 | pct }}</div><div class="n">{{ t('market.sector_cell', n=s.n) }}</div></div>
       </div>

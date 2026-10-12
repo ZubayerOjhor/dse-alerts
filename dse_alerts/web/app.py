@@ -30,6 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from jinja2 import pass_context
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from dse_alerts import engine, evidence, market, portfolio
@@ -120,6 +121,29 @@ def _num(x, digits=1):
     return "-" if _isnan(x) else f"{float(x):,.{digits}f}"
 
 
+def _as_date(v) -> dt.date | None:
+    if v is None or v == "":
+        return None
+    if isinstance(v, dt.datetime):
+        return v.date()
+    if isinstance(v, dt.date):
+        return v
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+@pass_context
+def _date_filter(ctx, v) -> str:
+    """'2026-10-12', a date, or a timestamp -> '12 Oct 2026' in the page's language."""
+    d = _as_date(v)
+    if d is None:
+        return "" if v in (None, "") else str(v)
+    months = t(ctx.get("lang", "en"), "date.months").split("|")
+    return f"{d.day} {months[d.month - 1]} {d.year}"
+
+
 def _records(df: pd.DataFrame) -> list[dict]:
     if df is None or df.empty:
         return []
@@ -176,6 +200,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.filters["pct"] = _pct
     templates.env.filters["num"] = _num
+    templates.env.filters["d"] = _date_filter
 
     # ---- helpers ----------------------------------------------------------------------
 
@@ -435,11 +460,15 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         record_scope = "mine" if record_dates else "market"
         if not record_dates:
             record_dates = market.upcoming_record_dates(store)[:8]
+        highs = sum(1 for x in today if x.get("severity") == "high")
+        notables = sum(1 for x in today if x.get("severity") == "notable")
         return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
+                      any_circuit=any(bool(r.get("hit_upper")) or bool(r.get("hit_lower")) for r in rows
+                                      if not _isnan(r.get("hit_upper")) or not _isnan(r.get("hit_lower"))),
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
                       total=val["total"] or None, accounts=len(val["accounts"]) if not val["accounts"].empty else 0, breadth=breadth,
                       digest=dict(digest) if digest else None, ai_on=settings.ai_enabled,
-                      ai_routine_only=bool(today) and not any(a.get("severity") in ("notable", "high") for a in today),
+                      ai_quiet=bool(today) and highs == 0 and notables < 2,
                       board=market.sector_board(store), movers=market.top_movers(store, 6),
                       record_dates=record_dates, record_scope=record_scope)
 
@@ -519,7 +548,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         if not val["total"]:
             return render(request, "portfolio.html", active="portfolio", total=None, as_of=None)
         pos = val["positions"]
-        sparks = market.latest_rows(store, sorted(pos["symbol"].unique()))[["symbol", "spark"]]
+        sparks = market.latest_rows(store, sorted(pos["symbol"].unique()))[["symbol", "spark", "spark_dir"]]
         pos = pos.merge(sparks, on="symbol", how="left")
         groups = []
         for name, sub in pos.groupby("account", sort=True):
@@ -534,7 +563,8 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         syms = [i["symbol"] for i in appdb.items(user["id"]) if i["kind"] == "target"]
         rows = evidence.target_rows(store, syms)
         for r in rows:
-            r["spark"] = market.spark_path(r.pop("closes", []))
+            closes = r.pop("closes", [])
+            r["spark"], r["spark_dir"] = market.spark_path(closes), market.spark_dir(closes)
         return render(request, "targets.html", active="targets", rows=rows)
 
     @app.post("/accounts/rename")
@@ -665,8 +695,11 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         df = sc.outcomes(store, appdb, user["id"])
         expectation = sc.load_expectation(settings)
         agg = sc.by_rule(df, expectation)
-        return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=_records(agg),
-                      base=_base_rate(expectation),
+        chart = [{"id": r.id, "share": v["fwd20_positive_share"], "per_year": v.get("per_250_sessions"), "median": v.get("fwd20_median")}
+                 for r in RULES if (v := expectation.get(r.id)) and v.get("fwd20_positive_share") is not None]
+        by_rule = _records(agg)
+        return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=by_rule,
+                      chart=chart, any_enough=any(r.get("enough") for r in by_rule), base=_base_rate(expectation),
                       pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df),
                       episodes=int(df["episode_start"].sum()) if not df.empty else 0, min_episodes=sc.MIN_EPISODES)
 

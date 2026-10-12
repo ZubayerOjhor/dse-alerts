@@ -21,7 +21,7 @@
 
 <div class="tiles">
   <div class="tile"><div class="label">{{ t('common.close') }}</div><div class="value">{{ last.close | num }}</div>
-    <div class="delta {{ 'up' if last.ret_1 and last.ret_1 > 0 else 'down' if last.ret_1 and last.ret_1 < 0 else 'flat' }}">{{ last.ret_1 | pct(2) }} {{ t('common.today') }}</div><div class="note">{{ last.date }}</div></div>
+    <div class="delta {{ 'up' if last.ret_1 and last.ret_1 > 0 else 'down' if last.ret_1 and last.ret_1 < 0 else 'flat' }}">{{ last.ret_1 | pct(2) }} {{ t('common.today') }}</div><div class="note">{{ last.date | d }}</div></div>
   <div class="tile"><div class="label">{{ t('symbol.ret_20_60_250') }}</div><div class="value" style="font-size:19px">
     <span class="{{ 'up' if ev.ret_20 and ev.ret_20 > 0 else 'down' if ev.ret_20 and ev.ret_20 < 0 }}">{{ ev.ret_20 | pct }}</span> /
     <span class="{{ 'up' if ev.ret_60 and ev.ret_60 > 0 else 'down' if ev.ret_60 and ev.ret_60 < 0 }}">{{ ev.ret_60 | pct }}</span> /
@@ -65,7 +65,7 @@
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>{{ t('symbol.fundamentals') }} {% if fund %}<span class="muted">{{ t('symbol.as_of', date=fund.as_of) }}</span>{% endif %}</h2>
+    <h2>{{ t('symbol.fundamentals') }} {% if fund %}<span class="muted">{{ t('symbol.as_of', date=fund.as_of | d) }}</span>{% endif %}</h2>
     {% if fund %}
     <table class="compact kv">
       <tr><td title="{{ t('help.pe') }}">{{ t('symbol.pe_sector', pe=ev.sector_pe | num) }}</td><td>{{ fund.pe | num }}</td></tr>
@@ -92,19 +92,19 @@
   </div>
   <div class="card">
     <h2>{{ t('symbol.psi') }}</h2>
-    {% if news %}{% for n in news %}<div class="news"><div class="muted small">{{ n.date }}</div><div class="title">{{ n.title }}</div><div class="detail">{{ n.body }}</div></div>{% endfor %}{% else %}<p class="muted">{{ t('common.none_on_file') }}</p>{% endif %}
+    {% if news %}{% for n in news %}<div class="news"><div class="muted small">{{ n.date | d }}</div><div class="title">{{ n.title }}</div><div class="detail">{{ n.body }}</div></div>{% endfor %}{% else %}<p class="muted">{{ t('common.none_on_file') }}</p>{% endif %}
     <h2 style="margin-top:16px">{{ t('symbol.dividends') }}</h2>
     {% if divs %}<table class="compact"><thead><tr><th>{{ t('common.declared') }}</th><th>{{ t('common.dividend') }}</th><th>{{ t('common.record_date') }}</th><th>{{ t('common.agm') }}</th></tr></thead><tbody>
-    {% for d in divs %}<tr><td>{{ d.declared_on }}</td><td>{{ d.dividend }}</td><td>{{ d.record_date or "" }}</td><td>{{ d.agm_date or "" }}</td></tr>{% endfor %}
+    {% for d in divs %}<tr><td class="nowrap">{{ d.declared_on | d }}</td><td>{{ d.dividend }}</td><td class="nowrap">{{ d.record_date | d }}</td><td class="nowrap">{{ d.agm_date | d }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="muted">{{ t('common.none_on_file') }}</p>{% endif %}
-    {% if alerts %}<h2 style="margin-top:16px">{{ t('symbol.past_alerts') }}</h2><table class="compact"><tbody>{% for a in alerts %}<tr><td class="muted">{{ a.session_date }}</td><td><span class="dot {{ a.severity }}"></span> {{ a.headline }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+    {% if alerts %}<h2 style="margin-top:16px">{{ t('symbol.past_alerts') }}</h2><table class="compact"><tbody>{% for a in alerts %}<tr><td class="muted nowrap">{{ a.session_date | d }}</td><td>{{ a.headline }} <span class="sev {{ a.severity }}">{{ t('severity.' ~ a.severity) }}</span></td></tr>{% endfor %}</tbody></table>{% endif %}
   </div>
 </div>
 
 {% if item %}
-<div class="card">
-  <h2>{{ t('symbol.rules_for', symbol=symbol) }}</h2>
-  <p class="muted small">{{ t('symbol.rules_note') }}</p>
+<details class="card fold">
+  <summary>{{ t('symbol.rules_toggle', symbol=symbol) }}</summary>
+  <p class="muted small" style="margin-top:10px">{{ t('symbol.rules_note') }}</p>
   <form method="post" action="/symbol/{{ symbol }}/rules" class="rules">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     {% for r in rules %}
@@ -115,8 +115,13 @@
       {% if r.params %}
       <div class="params">
         {% for k, default in r.params.items() %}
-        <label>{{ k }}{% if k == 'pct' %} (%){% endif %}
+        <label>{{ t('param.' ~ k) }}
+          {% if default is sameas true or default is sameas false %}
+          {% set cur = cfg[k] if (cfg is mapping and k in cfg and cfg[k] is not none) else none %}
+          <select name="{{ r.id }}__{{ k }}"><option value="">{{ t('common.default') }} ({{ t('common.yes') if default else t('common.no') }})</option><option value="yes" {% if cur is sameas true %}selected{% endif %}>{{ t('common.yes') }}</option><option value="no" {% if cur is sameas false %}selected{% endif %}>{{ t('common.no') }}</option></select>
+          {% else %}
           <input name="{{ r.id }}__{{ k }}" value="{% if cfg is mapping and k in cfg and cfg[k] is not none %}{% if k == 'pct' %}{{ (cfg[k] * 100) | round(2) }}{% else %}{{ cfg[k] }}{% endif %}{% endif %}" placeholder="{% if default is not none %}{{ default }}{% else %}{{ t('symbol.baseline_ph') }}{% endif %}">
+          {% endif %}
         </label>
         {% endfor %}
       </div>
@@ -126,6 +131,6 @@
     <label>{{ t('symbol.note') }} <input name="note" value="{{ item.note or '' }}" placeholder="{{ t('symbol.note_ph') }}"></label>
     <button class="primary">{{ t('symbol.save_rules') }}</button>
   </form>
-</div>
+</details>
 {% endif %}
 {% endblock %}

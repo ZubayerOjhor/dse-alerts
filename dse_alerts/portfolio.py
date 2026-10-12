@@ -7,6 +7,7 @@ Numbers only. Nothing here says what to do with a position.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -36,6 +37,60 @@ def import_csv(appdb: AppDB, user_id: int, path: Path) -> dict:
     return {"rows": n, "accounts": sorted(accounts)}
 
 
+_STOCK_DIVIDEND = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*Stock", re.IGNORECASE)
+
+
+def stock_dividend_pct(text) -> float:
+    """'180% Cash and 10% Stock dividend' -> 0.10; no stock part -> 0."""
+    m = _STOCK_DIVIDEND.search(str(text or ""))
+    return float(m.group(1)) / 100.0 if m else 0.0
+
+
+def bonus_factors(store: MarketStore, holdings: list[dict]) -> dict[int, float]:
+    """Per holding id: what each share on the statement has become, from stock dividends whose
+    record date fell after the statement date and has passed. A holding without a statement
+    date keeps 1.0, since nothing says which bonus issues it already includes."""
+    dated = [h for h in holdings if h.get("statement_date")]
+    if not dated:
+        return {}
+    syms = sorted({h["symbol"] for h in dated})
+    ph = ",".join("?" * len(syms))
+    with store.connect(read_only=True) as con:
+        divs = con.execute(
+            f"""
+            SELECT symbol, dividend, record_date FROM dividends
+            WHERE record_date IS NOT NULL AND symbol IN ({ph}) AND record_date < (SELECT max(date) FROM features)
+            """,
+            syms,
+        ).df()
+    out: dict[int, float] = {}
+    for h in dated:
+        try:
+            since = pd.Timestamp(str(h["statement_date"])[:10])
+        except (ValueError, TypeError):
+            continue
+        f = 1.0
+        for r in divs[divs["symbol"] == h["symbol"]].itertuples():
+            if pd.Timestamp(r.record_date) > since:
+                f *= 1.0 + stock_dividend_pct(r.dividend)
+        if abs(f - 1.0) > 1e-12:
+            out[int(h["id"])] = f
+    return out
+
+
+def _with_bonus(store: MarketStore, rows: list[dict]) -> pd.DataFrame:
+    """Holdings as a frame with bonus shares added: quantity grows, the average cost is spread
+    over the larger number of shares, and the statement figures keep the statement quantity."""
+    h = pd.DataFrame(rows)
+    factors = bonus_factors(store, rows)
+    h["bonus_factor"] = h["id"].map(factors).fillna(1.0).astype(float)
+    h["statement_quantity"] = h["quantity"].astype(float)
+    h["quantity"] = h["statement_quantity"] * h["bonus_factor"]
+    h["avg_cost"] = h["avg_cost"].astype(float) / h["bonus_factor"]
+    h["bonus_shares"] = h["quantity"] - h["statement_quantity"]
+    return h
+
+
 def _latest(store: MarketStore, symbols: list[str]) -> pd.DataFrame:
     if not symbols:
         return pd.DataFrame(columns=["symbol", "date", "close", "prev_close", "ret_1", "ret_20", "ret_5", "sma_50", "high_250", "low_250", "name", "category", "sector"])
@@ -58,7 +113,7 @@ def valuation(store: MarketStore, appdb: AppDB, user_id: int) -> dict:
     rows = appdb.holdings(user_id)
     if not rows:
         return {"positions": pd.DataFrame(), "accounts": pd.DataFrame(), "total": {}, "as_of": None}
-    h = pd.DataFrame(rows)
+    h = _with_bonus(store, rows)
     px = _latest(store, sorted(h["symbol"].unique()))
     df = h.merge(px, on="symbol", how="left")
     df["cost"] = df["quantity"] * df["avg_cost"]
@@ -66,8 +121,8 @@ def valuation(store: MarketStore, appdb: AppDB, user_id: int) -> dict:
     df["pnl"] = df["value"] - df["cost"]
     df["pnl_pct"] = df["pnl"] / df["cost"]
     df["day_change"] = df["quantity"] * (df["close"] - df["prev_close"])
-    df["statement_value"] = df["quantity"] * df["statement_price"]
-    df["since_statement_pct"] = df["close"] / df["statement_price"] - 1
+    df["statement_value"] = df["statement_quantity"] * df["statement_price"]
+    df["since_statement_pct"] = df["value"] / df["statement_value"] - 1   # on value, so bonus shares count
     df["weight"] = df["value"] / df["value"].sum()
     accounts = (
         df.groupby("account")
@@ -83,6 +138,7 @@ def valuation(store: MarketStore, appdb: AppDB, user_id: int) -> dict:
         "day_change": float(df["day_change"].sum()),
         "day_change_pct": float(df["day_change"].sum() / (df["value"].sum() - df["day_change"].sum())) if df["value"].sum() else None,
         "statement_value": float(df["statement_value"].sum()) if df["statement_value"].notna().any() else None,
+        "bonus_shares": float(df["bonus_shares"].sum()),
     }
     as_of = df["date"].max()
     return {"positions": df.sort_values(["account", "value"], ascending=[True, False]).reset_index(drop=True),
@@ -100,20 +156,24 @@ def by_group(positions: pd.DataFrame, key: str) -> pd.DataFrame:
 
 def value_history(store: MarketStore, appdb: AppDB, user_id: int, sessions: int = 250) -> pd.DataFrame:
     """Book value per session over the last N sessions at today's quantities (positions are
-    held constant, so this is 'what this book was worth', not realised performance)."""
+    held constant, so this is 'what this book was worth', not realised performance). Earlier
+    sessions use adjusted closes on today's printed scale, so a bonus issue is not a cliff."""
     rows = appdb.holdings(user_id)
     if not rows:
         return pd.DataFrame(columns=["date", "value", "cost"])
-    h = pd.DataFrame(rows).groupby("symbol").agg(quantity=("quantity", "sum"), cost=("avg_cost", lambda s: 0)).reset_index()
-    cost = float((pd.DataFrame(rows)["quantity"] * pd.DataFrame(rows)["avg_cost"]).sum())
+    hb = _with_bonus(store, rows)
+    h = hb.groupby("symbol").agg(quantity=("quantity", "sum")).reset_index()
+    cost = float((hb["quantity"] * hb["avg_cost"]).sum())
     with store.connect(read_only=True) as con:
         con.register("q", h[["symbol", "quantity"]])
         hist = con.execute(
             """
             WITH sess AS (SELECT DISTINCT date FROM features WHERE symbol IN (SELECT symbol FROM q)
                           ORDER BY date DESC LIMIT ?),
-                 px AS (SELECT f.symbol, f.date, f.close FROM features f WHERE f.symbol IN (SELECT symbol FROM q)
-                        AND f.date >= (SELECT min(date) FROM sess)),
+                 lastf AS (SELECT symbol, coalesce(adj_factor, 1) AS k FROM features WHERE symbol IN (SELECT symbol FROM q)
+                           QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY date DESC) = 1),
+                 px AS (SELECT f.symbol, f.date, f.aclose / l.k AS close FROM features f JOIN lastf l USING (symbol)
+                        WHERE f.symbol IN (SELECT symbol FROM q) AND f.date >= (SELECT min(date) FROM sess)),
                  grid AS (SELECT s.date, q.symbol, q.quantity FROM sess s CROSS JOIN q),
                  filled AS (
                    SELECT g.date, g.symbol, g.quantity,
