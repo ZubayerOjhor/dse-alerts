@@ -601,5 +601,6 @@
   "symbol.rules_toggle": "Change the alert rules for {symbol}",
   "common.scroll_hint": "Scroll sideways for more columns",
   "chart.bonus": "{pct}% bonus shares",
-  "chart.ex_date": "record date"
+  "chart.ex_date": "record date",
+  "al.record_detail": "Year end {year_end}; AGM {agm}. Declared {declared}."
 }

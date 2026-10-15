@@ -601,5 +601,6 @@
   "symbol.rules_toggle": "{symbol}-এর অ্যালার্ট নিয়ম বদলান",
   "common.scroll_hint": "আরও কলাম দেখতে পাশে স্ক্রল করুন",
   "chart.bonus": "{pct}% বোনাস শেয়ার",
-  "chart.ex_date": "রেকর্ড ডেট"
+  "chart.ex_date": "রেকর্ড ডেট",
+  "al.record_detail": "বছর শেষ {year_end}; AGM {agm}। ঘোষণা {declared}।"
 }

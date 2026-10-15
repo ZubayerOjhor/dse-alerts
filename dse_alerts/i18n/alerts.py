@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from dse_alerts.i18n import t
+from dse_alerts.i18n import fmt_date, t
 
 
 def _pct(x, d=1) -> str:
@@ -90,7 +90,10 @@ def _build(rule_id: str, sym: str, ev: dict, headline: str, detail: str, lang: s
     if rule_id == "record_date":
         if not ev.get("record_date"):
             return None
-        head = t(lang, "al.record_date", symbol=sym, date=str(ev["record_date"]), dividend=str(ev.get("dividend", ""))[:60])
+        head = t(lang, "al.record_date", symbol=sym, date=fmt_date(lang, ev["record_date"]), dividend=str(ev.get("dividend", ""))[:60])
+        if "agm_date" in ev or "declared_on" in ev:
+            detail = t(lang, "al.record_detail", year_end=ev.get("year_end") or "-",
+                       agm=fmt_date(lang, ev.get("agm_date")) or "-", declared=fmt_date(lang, ev.get("declared_on")) or "-")
         return head, detail
     if rule_id == "ma_cross":
         if ev.get("direction") is None:

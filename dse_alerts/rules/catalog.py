@@ -18,6 +18,7 @@ from typing import Any
 
 import pandas as pd
 
+from dse_alerts.i18n import fmt_date
 from dse_alerts.rules.base import Alert, Rule, RuleContext, pct
 
 _DAYS = {1: ("ret_1", "abs_ret1_p95", None), 5: ("ret_5", None, None),
@@ -246,13 +247,19 @@ def _psi_news(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
 
 
 def _day(v) -> str:
-    """A date for a sentence: '2026-10-15', never '2026-10-15 00:00:00' or 'NaT'."""
+    """A date for a sentence: '15 Oct 2026', never '2026-10-15 00:00:00' or 'NaT'."""
+    iso = _iso(v)
+    return fmt_date("en", iso) if iso else "-"
+
+
+def _iso(v) -> str | None:
+    """'2026-10-15' for the evidence, None for a missing date."""
     if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "":
-        return "-"
+        return None
     try:
         return str(pd.Timestamp(v).date())
     except (ValueError, TypeError):
-        return str(v)
+        return None
 
 
 def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
@@ -271,10 +278,11 @@ def _record_date(ctx: RuleContext, p: dict[str, Any]) -> Alert | None:
     d = soon.iloc[0]
     return Alert(
         symbol=ctx.row["symbol"], rule_id="record_date", date=ctx.as_of,
-        headline=f"{ctx.row['symbol']} record date on {pd.Timestamp(d['record_date']).date()}: {str(d['dividend'])[:60]}",
+        headline=f"{ctx.row['symbol']} record date on {_day(d['record_date'])}: {str(d['dividend'])[:60]}",
         detail=f"Year end {d.get('year_end', '')}; AGM {_day(d.get('agm_date'))}. Declared {_day(d.get('declared_on'))}.",
         severity="info",
-        evidence={"record_date": str(pd.Timestamp(d["record_date"]).date()), "dividend": str(d["dividend"])},
+        evidence={"record_date": _iso(d["record_date"]), "dividend": str(d["dividend"]), "year_end": str(d.get("year_end") or ""),
+                  "agm_date": _iso(d.get("agm_date")), "declared_on": _iso(d.get("declared_on"))},
     )
 
 

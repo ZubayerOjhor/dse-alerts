@@ -104,7 +104,13 @@ def test_psi_news_and_record_date():
 
     div = [{"symbol": "GP", "declared_on": AS_OF, "year_end": "2026", "dividend": "20% cash",
             "agm_date": AS_OF + dt.timedelta(days=40), "record_date": AS_OF + dt.timedelta(days=2)}]
-    assert get_rule("record_date").run(_ctx({}, STATS, dividends=div))
+    rec = get_rule("record_date").run(_ctx({}, STATS, dividends=div))
+    assert rec and "00:00" not in rec.headline and "-" not in rec.headline.split(":")[0]   # "20 Sep 2026", not 2026-09-20
+    from dse_alerts.i18n import fmt_date
+    from dse_alerts.i18n.alerts import localize
+    assert fmt_date("en", rec.evidence["record_date"]) in rec.headline
+    bn_head, bn_det = localize("record_date", rec.symbol, rec.evidence, rec.headline, rec.detail, "bn")
+    assert fmt_date("bn", rec.evidence["record_date"]) in bn_head and fmt_date("bn", rec.evidence["agm_date"]) in bn_det
     assert get_rule("record_date").run(_ctx({}, STATS, dividends=div), {"within_days": 1}) is None
 
 
