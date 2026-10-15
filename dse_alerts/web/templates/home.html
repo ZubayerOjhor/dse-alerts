@@ -14,7 +14,7 @@
   </div>
   <div class="card sample">
     <h2>{{ t('home.sample_t') }}</h2>
-    <div class="alert notable"><div class="head">{{ t('home.sample_head') }} <span class="sev notable">{{ t('severity.notable') }}</span></div><div class="detail">{{ t('home.sample_detail') }}</div></div>
+    <div class="alert high"><div class="head">{{ t('home.sample_head') }} <span class="sev high">{{ t('severity.high') }}</span></div><div class="detail">{{ t('home.sample_detail') }}</div></div>
     <div class="alert info"><div class="head">{{ t('home.sample_head2') }} <span class="sev info">{{ t('severity.info') }}</span></div><div class="detail">{{ t('home.sample_detail2') }}</div></div>
     <p class="muted small" style="margin:10px 0 0">{{ t('home.sample_note') }}</p>
     <div class="row between small" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><span><strong>DSEX</strong> {{ index.close | num(0) }} <span class="{{ 'up' if index.ret_1 and index.ret_1 > 0 else 'down' if index.ret_1 and index.ret_1 < 0 else 'flat' }}">{{ index.ret_1 | pct(2) }}</span></span><span class="muted">{{ t('dash.latest_session') }} {{ market.last_session | d }}</span></div>

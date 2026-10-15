@@ -88,10 +88,19 @@
     try { chart.panes()[1].setHeight(90); } catch (e) { /* older build */ }
     var legend = legendEl(container);
     var state = { data: data };
+    var words = (document.body.dataset.chartWords || "{pct}% bonus shares|record date").split("|");
+    var marks = LW.createSeriesMarkers ? LW.createSeriesMarkers(candles, []) : null;
     function volColor(up) { return alpha(up ? c.up : c.down, 0.6); }
+    function markerList(d) {
+      return (d.markers || []).map(function (m) {
+        return { time: m.time, position: "belowBar", shape: "arrowUp", color: c.s3 || c.muted, size: 1,
+                 text: m.bonus ? words[0].replace("{pct}", m.bonus) : words[1] };
+      });
+    }
     function load(d) {
       state.data = d;
       candles.setData(d.candles); sma20.setData(d.sma20 || []); sma50.setData(d.sma50 || []);
+      if (marks) marks.setMarkers(markerList(d));
       vol.setData((d.volume || []).map(function (v) { return { time: v.time, value: v.value, color: volColor(v.up) }; }));
       chart.timeScale().fitContent();
       showLegend(null);
@@ -119,6 +128,7 @@
       c = colors(); chart.applyOptions(baseOptions(c));
       candles.applyOptions({ upColor: c.up, downColor: c.down, wickUpColor: c.up, wickDownColor: c.down });
       sma20.applyOptions({ color: c.s1 }); sma50.applyOptions({ color: c.s2 });
+      if (marks) marks.setMarkers(markerList(state.data));
       vol.setData((state.data.volume || []).map(function (v) { return { time: v.time, value: v.value, color: volColor(v.up) }; }));
       showLegend(null);
     } };
@@ -130,6 +140,8 @@
     opts = opts || {};
     var LW = window.LightweightCharts; var c = colors();
     var chart = LW.createChart(container, baseOptions(c));
+    var tight = { timeScale: { minBarSpacing: 0.5, rightOffset: 1 } };
+    chart.applyOptions(tight);
     var slots = [c.s1, c.s2, c.s3, c.s4];
     var handles = series.map(function (s, i) {
       var color = s.color ? cssVar(s.color) || s.color : slots[i % slots.length];
@@ -151,14 +163,27 @@
     }
     chart.subscribeCrosshairMove(showLegend); showLegend(null);
     watchResize(container, chart);
-    var handle = { chart: chart, recolor: function () { c = colors(); chart.applyOptions(baseOptions(c)); handles.forEach(function (h, i) { if (!series[i].color) { h.color = [c.s1, c.s2, c.s3, c.s4][i % 4]; h.api.applyOptions(series[i].area ? { lineColor: h.color, topColor: alpha(h.color, 0.25), bottomColor: alpha(h.color, 0.02) } : { color: h.color }); } }); showLegend(null); } };
+    var handle = { chart: chart, recolor: function () { c = colors(); chart.applyOptions(baseOptions(c)); chart.applyOptions(tight); handles.forEach(function (h, i) { if (!series[i].color) { h.color = [c.s1, c.s2, c.s3, c.s4][i % 4]; h.api.applyOptions(series[i].area ? { lineColor: h.color, topColor: alpha(h.color, 0.25), bottomColor: alpha(h.color, 0.02) } : { color: h.color }); } }); showLegend(null); } };
     charts.push(handle); return handle;
   }
 
   /* ---- boot: every [data-chart] element renders itself from embedded JSON ------- */
   function json(id) { var el = document.getElementById(id); return el ? JSON.parse(el.textContent) : null; }
+  function scrollHints() {
+    var hint = document.body.dataset.scrollHint;
+    document.querySelectorAll(".table-wrap").forEach(function (w) {
+      var wide = w.scrollWidth > w.clientWidth + 2;
+      w.classList.toggle("scrolls", wide);
+      var prev = w.previousElementSibling;
+      var h = prev && prev.classList.contains("scroll-hint") ? prev : null;
+      if (wide && !h && hint) { h = document.createElement("p"); h.className = "scroll-hint"; h.textContent = hint; w.parentElement.insertBefore(h, w); }
+      if (!wide && h) h.remove();
+    });
+  }
   function boot() {
     initTheme();
+    scrollHints();
+    var rt; window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(scrollHints, 150); });
     if (!window.LightweightCharts) return;
     document.querySelectorAll("[data-chart]").forEach(function (el) {
       var kind = el.dataset.chart; var d = json(el.dataset.src);

@@ -49,6 +49,25 @@ def t(lang: str | None, key: str, **kw: Any) -> str:
     return s
 
 
+def fmt_date(lang: str | None, v: Any) -> str:
+    """'2026-10-12', a date or a timestamp -> '12 Oct 2026' in the page's language."""
+    import datetime as _dt
+
+    if v is None or v == "":
+        return ""
+    if isinstance(v, _dt.datetime):
+        d = v.date()
+    elif isinstance(v, _dt.date):
+        d = v
+    else:
+        try:
+            d = _dt.date.fromisoformat(str(v)[:10])
+        except ValueError:
+            return str(v)
+    months = t(lang, "date.months").split("|")
+    return f"{d.day} {months[d.month - 1]} {d.year}"
+
+
 def plural(lang: str | None, n: int, one_key: str, many_key: str, **kw: Any) -> str:
     """Pick the singular or plural key for ``n`` (both languages take the same rule)."""
     return t(lang, one_key if n == 1 else many_key, n=n, **kw)

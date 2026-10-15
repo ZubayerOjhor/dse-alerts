@@ -6,6 +6,7 @@ forecast or a recommendation.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import pandas as pd
 
@@ -22,6 +23,9 @@ def _pct(x, d=1):
 
 def _num(x, d=1):
     return "-" if x is None else f"{x:,.{d}f}"
+
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _date(x) -> str:
@@ -81,16 +85,19 @@ def _trend(close, sma20, sma50) -> str:
 
 def fact_text(fact: dict, lang: str) -> dict:
     """Resolve one fact's catalog keys into strings for ``lang`` (used by the symbol page)."""
-    from dse_alerts.i18n import t
+    from dse_alerts.i18n import fmt_date, t
 
     args = dict(fact.get("args") or {})
     for k in ("where", "rel"):
         if k in args and isinstance(args[k], str) and args[k].startswith("fact."):
             args[k] = t(lang, args[k], **(args.pop(k + "_args", None) or {}))
+    args = {k: (fmt_date(lang, v) if isinstance(v, str) and _ISO_DATE.match(v) else v) for k, v in args.items()}
     note = t(lang, fact["note"], **args) if fact.get("note") else fact.get("text", "")
     if fact.get("note2"):
         note += " " + t(lang, fact["note2"], **(fact.get("args2") or {}))
     value = t(lang, fact["value_key"], **(fact.get("value_args") or {})) if fact.get("value_key") else fact.get("value")
+    if isinstance(value, str) and _ISO_DATE.match(value):
+        value = fmt_date(lang, value)
     return {"label": t(lang, fact["label"]), "value": value, "tone": fact.get("tone", ""), "note": note}
 
 

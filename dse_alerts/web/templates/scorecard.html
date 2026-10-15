@@ -9,13 +9,15 @@
   <h2>{{ t('scorecard.chart_t') }}</h2>
   <p class="muted small" style="margin:-4px 0 12px">{{ t('scorecard.chart_note', pct=base.positive) }}</p>
   <div class="dots">
-    <div class="dotrow ticks"><div></div><div class="track"><span style="left:0">25%</span><span class="mid" style="left: {{ (base.positive - 25) * 2 }}%">{{ t('scorecard.any_session', pct=base.positive) }}</span><span style="left:100%">75%</span></div><div></div></div>
+    {% set span = axis.hi - axis.lo %}
+    {% set bx = ((base.positive - axis.lo) * 100 / span) | round(1) %}
+    <div class="dotrow ticks"><div></div><div class="track"><span style="left:0">{{ axis.lo }}%</span><span class="mid" style="left: {{ bx }}%">{{ t('scorecard.any_session', pct=base.positive) }}</span><span style="left:100%">{{ axis.hi }}%</span></div><div></div></div>
     {% for c in chart %}
-    {% set x = [[((c.share * 100) - 25) * 2, 0] | max, 100] | min %}
+    {% set x = [[((c.share * 100) - axis.lo) * 100 / span, 0] | max, 100] | min %}
     <div class="dotrow">
       <div class="lbl"><strong>{{ t('rule.' ~ c.id ~ '.name') }}</strong><div class="muted small">{{ t('scorecard.chart_sub', n=c.per_year | num(1), med=c.median | pct) }}</div></div>
-      <div class="track"><i class="base" style="left: {{ (base.positive - 25) * 2 }}%"></i><b class="dot {{ 'up' if c.share * 100 > base.positive else 'down' }}" style="left: {{ x | round(1) }}%"></b></div>
-      <div class="num val {{ 'up' if c.share * 100 > base.positive else 'down' }}">{{ (c.share * 100) | round(0) | int }}%</div>
+      <div class="track"><i class="base" style="left: {{ bx }}%"></i><b class="dot" style="left: {{ x | round(1) }}%"></b></div>
+      <div class="num val">{{ (c.share * 100) | round(0) | int }}%</div>
     </div>
     {% endfor %}
   </div>

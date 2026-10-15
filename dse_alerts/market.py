@@ -92,16 +92,23 @@ def ohlc(store: MarketStore, symbol: str, rng: str = "1y") -> dict:
     n = RANGE_SESSIONS.get(rng, 250)
     with store.connect(read_only=True) as con:
         df = con.execute(
-            "SELECT date, open, high, low, close, volume, sma_20, sma_50, prev_close, adj_factor FROM features WHERE symbol = ? ORDER BY date DESC LIMIT ?",
+            "SELECT date, open, high, low, close, volume, sma_20, sma_50, prev_close, adj_factor, ex_session FROM features WHERE symbol = ? ORDER BY date DESC LIMIT ?",
             [symbol, n],
         ).df()
     df = df.iloc[::-1]
-    candles, volume, s20, s50 = [], [], [], []
+    candles, volume, s20, s50, markers = [], [], [], [], []
+    prev_k = None
     for r in df.itertuples():
         t = _d(r.date)
         c = _f(r.close)
         if c is None or c <= 0:
             continue
+        # the first session after a record date: when the factor steps, bonus shares explain the step
+        k_now = _f(r.adj_factor) or 1.0
+        if bool(r.ex_session) and prev_k:
+            bonus = round(100 * (k_now / prev_k - 1))
+            markers.append({"time": t, "bonus": bonus if bonus > 0 else None})
+        prev_k = k_now
         # sessions with no trades come through as open/high/low = 0; draw them as a flat candle at the close
         o = _f(r.open) if _f(r.open) else c
         hi = _f(r.high) if _f(r.high) else c
@@ -116,7 +123,7 @@ def ohlc(store: MarketStore, symbol: str, rng: str = "1y") -> dict:
             s20.append({"time": t, "value": round(float(r.sma_20) / k, 2)})
         if _f(r.sma_50) is not None:
             s50.append({"time": t, "value": round(float(r.sma_50) / k, 2)})
-    return {"symbol": symbol, "range": rng, "candles": candles, "volume": volume, "sma20": s20, "sma50": s50}
+    return {"symbol": symbol, "range": rng, "candles": candles, "volume": volume, "sma20": s20, "sma50": s50, "markers": markers}
 
 
 def relative_series(store: MarketStore, symbol: str, sessions: int = 250) -> dict:

@@ -207,13 +207,15 @@ def test_ai_summary_card(env):
     client, db = env
     _register(client)
     page = client.get("/").text
-    assert "AI summary" in page and "GROQ_API_KEY" in page            # off: tells the user how to turn it on
+    assert 'class="ai-line' in page and "GROQ_API_KEY" in page       # off: one line that says how to turn it on, not an empty card
+    assert "AI summary" not in page
     uid = db.user("me@example.com")["id"]
     # store a digest for the latest session and it shows on the overview
     last = page.split('<time datetime="')[1].split('"')[0]
     db.save_digest(uid, last, "A quiet session for your list.", "groq:llama-3.3-70b-versatile", "en")
     page = client.get("/").text
     assert "A quiet session for your list." in page and "groq:llama" not in page   # the model id stays out of the page
+    assert "AI summary" in page and 'class="ai-line' not in page                # with a note, the card is back
     row = db.digest_for(uid, last)
     assert row["lang"] == "en" and row["provider"].startswith("groq")
 
@@ -394,3 +396,23 @@ def test_unknown_pages_get_a_plain_message(client):
     r = client.get("/demo")
     assert r.status_code == 405 and "does not accept this kind of request" in r.text
     assert client.head("/learn").status_code == 200 and client.head("/learn").text == ""
+
+
+def test_landing_sample_and_rule_text_match_the_code():
+    """The landing page's sample alert and the Rules page describe what the code really does."""
+    import json
+    import re
+    from pathlib import Path
+
+    from dse_alerts.analysis.features import SLABS
+    from dse_alerts.rules.catalog import RULES
+
+    for lang in ("en", "bn"):
+        cat = json.loads(Path("dse_alerts/i18n", f"{lang}.json").read_text(encoding="utf-8"))
+        price = float(re.search(r"Tk (\d+\.\d)", cat["home.sample_detail"]).group(1))
+        limit = next(pct for hi, pct in SLABS if price <= hi)
+        assert f"{100 * limit:.2f}%" in cat["home.sample_detail"]       # the limit quoted is the slab for that price
+        assert "ORIONINFU" in cat["home.sample_head"] and "+8.7%" in cat["home.sample_head"]
+        assert "2 days" not in cat["rule.psi_news.desc"] and "২ দিন" not in cat["rule.psi_news.desc"]
+    psi = next(r for r in RULES if r.id == "psi_news")
+    assert "since the previous session" in psi.description

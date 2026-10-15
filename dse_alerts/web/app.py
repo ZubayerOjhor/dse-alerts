@@ -37,7 +37,7 @@ from dse_alerts import engine, evidence, market, portfolio
 from dse_alerts.appdb import DEMO_EMAIL, AppDB, is_demo
 from dse_alerts.config import Settings, get_settings
 from dse_alerts.data.store import MarketStore
-from dse_alerts.i18n import LANGS, normalize, t
+from dse_alerts.i18n import LANGS, fmt_date, normalize, t
 from dse_alerts.i18n.alerts import localize
 from dse_alerts.rules import RULES, Alert
 from dse_alerts.rules.catalog import OPT_IN
@@ -137,11 +137,9 @@ def _as_date(v) -> dt.date | None:
 @pass_context
 def _date_filter(ctx, v) -> str:
     """'2026-10-12', a date, or a timestamp -> '12 Oct 2026' in the page's language."""
-    d = _as_date(v)
-    if d is None:
+    if _as_date(v) is None:
         return "" if v in (None, "") else str(v)
-    months = t(ctx.get("lang", "en"), "date.months").split("|")
-    return f"{d.day} {months[d.month - 1]} {d.year}"
+    return fmt_date(ctx.get("lang", "en"), v)
 
 
 def _records(df: pd.DataFrame) -> list[dict]:
@@ -698,8 +696,14 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         chart = [{"id": r.id, "share": v["fwd20_positive_share"], "per_year": v.get("per_250_sessions"), "median": v.get("fwd20_median")}
                  for r in RULES if (v := expectation.get(r.id)) and v.get("fwd20_positive_share") is not None]
         by_rule = _records(agg)
+        base = _base_rate(expectation)
+        # the axis hugs the dots: a 25-75% track left half the width empty
+        pts = [100 * c["share"] for c in chart] + ([base["positive"]] if base else [])
+        lo = int(min(pts) - 3) // 5 * 5 if pts else 25
+        hi = -(-int(max(pts) + 3) // 5) * 5 if pts else 75
+        axis = {"lo": lo, "hi": max(hi, lo + 10)}
         return render(request, "scorecard.html", active="scorecard", rows=_localized(_records(df.head(200)), lang), by_rule=by_rule,
-                      chart=chart, any_enough=any(r.get("enough") for r in by_rule), base=_base_rate(expectation),
+                      chart=chart, axis=axis, any_enough=any(r.get("enough") for r in by_rule), base=base,
                       pending=int((df["status"] == "pending").sum()) if not df.empty else 0, total=len(df),
                       episodes=int(df["episode_start"].sum()) if not df.empty else 0, min_episodes=sc.MIN_EPISODES)
 

@@ -108,6 +108,14 @@ table.kv td:first-child { color: var(--muted); width: 55%; } table.kv td:last-ch
 /* a table scrolls inside its card instead of stretching the page; low-priority columns drop
    out first on narrow screens (hide-md under 1100px, hide-sm under 760px) */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* a table wider than its card: a shadow on the hidden edge and a one-line hint above it */
+.table-wrap.scrolls { background:
+  linear-gradient(to right, var(--surface) 40%, transparent) left / 32px 100% no-repeat local,
+  linear-gradient(to left, var(--surface) 40%, transparent) right / 32px 100% no-repeat local,
+  linear-gradient(to right, color-mix(in srgb, var(--ink) 14%, transparent), transparent) left / 12px 100% no-repeat scroll,
+  linear-gradient(to left, color-mix(in srgb, var(--ink) 14%, transparent), transparent) right / 12px 100% no-repeat scroll; }
+.scroll-hint { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.scroll-hint::after { content: " \2192"; }
 @media (max-width: 1100px) { .hide-md { display: none; } }
 @media (max-width: 760px) { .hide-sm { display: none; } }
 .name { max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -263,8 +271,7 @@ details.fold[open] summary::after { transform: rotate(-135deg); margin: 4px 6px 
 .dots .track { position: relative; height: 24px; }
 .dots .track::before { content: ""; position: absolute; left: 0; right: 0; top: 11px; height: 2px; background: var(--line-2); border-radius: 1px; }
 .dots .base { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--muted); }
-.dots .dot { position: absolute; top: 5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--up); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-2); }
-.dots .dot.down { background: var(--down); }
+.dots .dot { position: absolute; top: 5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--s1); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-2); }
 .dots .val { font-weight: 650; }
 .sample .alert { margin: 6px 0; }
 .sample .alert .head { font-size: 13.5px; }
@@ -305,3 +312,6 @@ details.fold[open] summary::after { transform: rotate(-135deg); margin: 4px 6px 
 }
 @media (max-width: 400px) { .facts { grid-template-columns: 1fr; } .tile .value { font-size: 17px; } }
 tr.repeat td { color: var(--muted); }
+
+/* no AI note today: one line between the cards, not an empty card */
+.ai-line { margin: -6px 0 18px; display: flex; gap: 8px; align-items: baseline; }

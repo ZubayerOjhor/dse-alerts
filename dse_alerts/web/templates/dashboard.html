@@ -71,21 +71,15 @@
   {% else %}<p class="muted">{{ t('dash.nothing_watched') }} <code>dse portfolio import</code>. {{ t('dash.or_find') }} <a href="/find">{{ t('nav.find') }}</a>.</p>{% endif %}
 </div>
 
+{% if digest %}
 <div class="card ai">
   <h2><span class="ai-tag">AI</span> {{ t('ai.title') }}</h2>
-  {% if digest %}
   <div class="digest">{{ digest.text }}</div>
   <p class="muted small" style="margin:10px 0 0">{{ t('ai.by') }}</p>
-  {% elif not ai_on %}
-  <p class="muted">{{ t('ai.off') }}</p>
-  {% elif not alerts %}
-  <p class="muted">{{ t('ai.no_alerts') }}</p>
-  {% elif ai_quiet %}
-  <p class="muted">{{ t('ai.quiet') }}</p>
-  {% else %}
-  <p class="muted">{{ t('ai.none_yet') }}</p>
-  {% endif %}
 </div>
+{% else %}
+<p class="ai-line muted small"><span class="ai-tag">AI</span> <span>{% if not ai_on %}{{ t('ai.off') }}{% elif not alerts %}{{ t('ai.no_alerts') }}{% elif ai_quiet %}{{ t('ai.quiet') }}{% else %}{{ t('ai.none_yet') }}{% endif %}</span></p>
+{% endif %}
 
 <h2 style="margin:4px 0 10px">{{ t('market.title') }}</h2>
 <div class="grid cols-2">
