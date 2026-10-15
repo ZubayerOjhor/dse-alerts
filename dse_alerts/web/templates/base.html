@@ -45,6 +45,11 @@
 </header>
 {% if demo %}<div class="banner demo">{{ t('demo.banner') }}{% if settings.app_registration %} <a href="/register">{{ t('demo.banner_link') }}</a>.{% endif %}</div>{% endif %}
 <main>
+{% if flash %}
+<div class="flash {{ flash.tone }}" role="status" id="flash"><span>{{ flash.text }}</span>
+  {% if flash.undo and not demo %}<form method="post" action="/watchlist/restore" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ flash.undo.symbol }}"><input type="hidden" name="kind" value="{{ flash.undo.kind }}"><input type="hidden" name="rules" value="{{ flash.undo.rules }}"><input type="hidden" name="note" value="{{ flash.undo.note }}"><button class="link">{{ t('common.undo') }}</button></form>{% endif %}
+  <button type="button" class="link close" data-dismiss="flash" aria-label="{{ t('common.close_msg') }}">&times;</button></div>
+{% endif %}
 {% block content %}{% endblock %}
 </main>
 <footer>

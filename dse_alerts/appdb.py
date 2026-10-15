@@ -111,6 +111,12 @@ MIGRATIONS = [
     ("users", "telegram_confirmed", ("ALTER TABLE users ADD COLUMN telegram_confirmed TEXT;\n"
                                      "UPDATE users SET telegram_confirmed = telegram_chat_id")),
     ("users", "telegram_code", "ALTER TABLE users ADD COLUMN telegram_code TEXT"),
+    # what the last rule check covered, so the overview can say "checked at 10:32, 25 stocks"
+    # and tell a symbol added since then from one that was checked and stayed quiet
+    ("users", "last_checked_at", "ALTER TABLE users ADD COLUMN last_checked_at TEXT"),
+    ("users", "last_check_session", "ALTER TABLE users ADD COLUMN last_check_session TEXT"),
+    ("users", "last_check_symbols", "ALTER TABLE users ADD COLUMN last_check_symbols INTEGER"),
+    ("users", "last_check_alerts", "ALTER TABLE users ADD COLUMN last_check_alerts INTEGER"),
 ]
 
 # The shared read-only account used when APP_DEMO=1 (see `dse demo seed`).
@@ -125,7 +131,7 @@ def is_demo(user) -> bool:
 
 
 def _now() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
+    return dt.datetime.now().isoformat(timespec="milliseconds")
 
 
 class AppDB:
@@ -209,6 +215,13 @@ class AppDB:
                 (*sets.values(), user_id),
             )
 
+    def record_check(self, user_id: int, session, symbols: int, alerts: int) -> None:
+        """Remember that this user's symbols were just checked against ``session``."""
+        s = session.isoformat() if hasattr(session, "isoformat") else (str(session) if session else None)
+        with self.connect() as con:
+            con.execute("UPDATE users SET last_checked_at = ?, last_check_session = ?, last_check_symbols = ?, last_check_alerts = ? WHERE id = ?",
+                        (_now(), s, symbols, alerts, user_id))
+
     # ---- watchlists -------------------------------------------------------------------
 
     def ensure_watchlist(self, user_id: int, name: str = "My watchlist") -> int:
@@ -229,7 +242,7 @@ class AppDB:
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
                     rules_json = excluded.rules_json, note = coalesce(excluded.note, watchlist_items.note),
-                    kind = coalesce(?, watchlist_items.kind)
+                    kind = coalesce(?, watchlist_items.kind), added_at = watchlist_items.added_at
                 """,
                 (watchlist_id, symbol.upper().strip(), json.dumps(rules or {}), note, _now(), kind or "watch", kind),
             )
@@ -243,14 +256,14 @@ class AppDB:
         with self.connect() as con:
             rows = con.execute(
                 """
-                SELECT wi.symbol, wi.rules_json, wi.note, wi.kind, w.name AS watchlist
+                SELECT wi.symbol, wi.rules_json, wi.note, wi.kind, wi.added_at, w.name AS watchlist
                 FROM watchlist_items wi JOIN watchlists w ON w.id = wi.watchlist_id
                 WHERE w.user_id = ? ORDER BY w.name, wi.symbol
                 """,
                 (user_id,),
             ).fetchall()
         out = [{"symbol": r["symbol"], "rules": json.loads(r["rules_json"]), "note": r["note"],
-                "kind": r["kind"] or "watch", "watchlist": r["watchlist"]} for r in rows]
+                "kind": r["kind"] or "watch", "watchlist": r["watchlist"], "added_at": r["added_at"]} for r in rows]
         # everything the user holds is watched as well, with default rules unless tuned
         held = {h["symbol"] for h in self.holdings(user_id)}
         seen = {i["symbol"] for i in out}
@@ -258,7 +271,7 @@ class AppDB:
             if i["symbol"] in held:
                 i["kind"] = "owned"
         for sym in sorted(held - seen):
-            out.append({"symbol": sym, "rules": {}, "note": None, "kind": "owned", "watchlist": "Holdings"})
+            out.append({"symbol": sym, "rules": {}, "note": None, "kind": "owned", "watchlist": "Holdings", "added_at": None})
         return out
 
     def set_item_kind(self, watchlist_id: int, symbol: str, kind: str) -> None:

@@ -15,15 +15,37 @@ import pandas as pd
 from dse_alerts.appdb import AppDB
 from dse_alerts.data.store import MarketStore
 
+HOLDINGS_COLUMNS = ["account", "symbol", "quantity", "avg_cost", "statement_price", "statement_date", "margin", "note"]
+
 
 def import_csv(appdb: AppDB, user_id: int, path: Path) -> dict:
     """Load holdings from a CSV with columns account,symbol,quantity,avg_cost[,statement_price,
     statement_date,margin,note]. Re-importing updates quantities and costs in place."""
-    df = pd.read_csv(path, dtype=str).fillna("")
+    return import_frame(appdb, user_id, pd.read_csv(path, dtype=str))
+
+
+def import_frame(appdb: AppDB, user_id: int, df: pd.DataFrame, known: set[str] | None = None) -> dict:
+    """The same import from a frame already in memory (the web upload). ``known`` is the set
+    of trading codes; rows outside it are refused before anything is written."""
+    df = df.fillna("")
+    df.columns = [str(c).strip().lower() for c in df.columns]
     required = {"account", "symbol", "quantity", "avg_cost"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"holdings file is missing columns: {sorted(missing)}")
+    df["symbol"] = df["symbol"].astype(str).str.strip().str.upper()
+    df = df[df["symbol"] != ""]
+    if known is not None:
+        bad = sorted(set(df["symbol"]) - known)
+        if bad:
+            raise ValueError("unknown trading codes: " + ", ".join(bad[:8]))
+    try:
+        qty = df["quantity"].astype(str).str.replace(",", "").astype(float)
+        cost = df["avg_cost"].astype(str).str.replace(",", "").astype(float)
+    except ValueError as e:
+        raise ValueError("quantity and avg_cost must be numbers") from e
+    if (qty <= 0).any() or (cost < 0).any():
+        raise ValueError("quantity must be above zero and avg_cost cannot be negative")
     n, accounts = 0, set()
     for r in df.itertuples():
         acc = appdb.ensure_account(user_id, r.account.strip() or "Default")

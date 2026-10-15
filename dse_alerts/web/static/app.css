@@ -315,3 +315,26 @@ tr.repeat td { color: var(--muted); }
 
 /* no AI note today: one line between the cards, not an empty card */
 .ai-line { margin: -6px 0 18px; display: flex; gap: 8px; align-items: baseline; }
+
+/* ---- flash: what just happened, with undo; stays in view wherever the page is scrolled -------- */
+.flash { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50; max-width: min(92vw, 640px);
+  display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 13.5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.flash.error { background: var(--down); color: #fff; }
+.flash button.link { color: inherit; font-weight: 650; text-decoration: underline; }
+.flash button.close { text-decoration: none; font-size: 18px; line-height: 1; padding: 0 2px; opacity: .8; }
+.flash.gone { display: none; }
+/* ---- forms: a message beside the field, never a page of its own ------------------------------ */
+.field-error { display: block; color: var(--down); font-size: 12px; margin-top: 3px; }
+label.bad input, label.bad select { border-color: var(--down); }
+/* ---- sortable tables ----------------------------------------------------------------------- */
+table.sortable th { cursor: pointer; user-select: none; }
+table.sortable th:hover { color: var(--accent); }
+table.sortable th.asc::after { content: " \25B4"; } table.sortable th.desc::after { content: " \25BE"; }
+/* ---- holdings entry ----------------------------------------------------------------------- */
+form.holding { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 12px; align-items: end; }
+form.holding label { margin: 0; font-size: 12.5px; } form.holding .actions { display: flex; align-items: end; }
+input[type=file] { font: inherit; font-size: 13px; max-width: 260px; }
+input[type=date] { padding: 7px 11px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--bg); color: var(--ink); font: inherit; }
+.page-head .check { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+@media (max-width: 760px) { .page-head .check { align-items: flex-start; text-align: left; } }

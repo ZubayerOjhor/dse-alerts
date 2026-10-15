@@ -180,9 +180,43 @@
       if (!wide && h) h.remove();
     });
   }
+  /* ---- tables sort on a header click; numbers are read out of the cell text ---------------- */
+  function cellKey(td) {
+    if (td.dataset.sort !== undefined) { var n = parseFloat(td.dataset.sort); return isNaN(n) ? td.dataset.sort : n; }
+    var t = (td.textContent || "").trim().replace(/[,৳%x+]/g, "").replace(/\s+/g, " ");
+    var m = t.match(/^-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : t.toLowerCase();
+  }
+  function sortable() {
+    document.querySelectorAll("table.sortable").forEach(function (table) {
+      var ths = table.querySelectorAll("thead th");
+      ths.forEach(function (th, i) {
+        if (!th.textContent.trim()) return;
+        th.addEventListener("click", function () {
+          var dir = th.classList.contains("asc") ? "desc" : "asc";
+          ths.forEach(function (x) { x.classList.remove("asc", "desc"); }); th.classList.add(dir);
+          var body = table.tBodies[0]; var rows = Array.prototype.slice.call(body.rows);
+          rows.sort(function (a, b) {
+            var ka = cellKey(a.cells[i]), kb = cellKey(b.cells[i]);
+            if (typeof ka === "number" && typeof kb === "number") return dir === "asc" ? ka - kb : kb - ka;
+            if (typeof ka === "number") return -1; if (typeof kb === "number") return 1;
+            return dir === "asc" ? String(ka).localeCompare(String(kb)) : String(kb).localeCompare(String(ka));
+          });
+          rows.forEach(function (r) { body.appendChild(r); });
+        });
+      });
+    });
+  }
+  function flashes() {
+    var f = document.getElementById("flash"); if (!f) return;
+    var x = f.querySelector("[data-dismiss]"); if (x) x.addEventListener("click", function () { f.classList.add("gone"); });
+    if (!f.querySelector("form")) setTimeout(function () { f.classList.add("gone"); }, 9000);
+    document.querySelectorAll("form[data-confirm]").forEach(function (fm) {
+      fm.addEventListener("submit", function (e) { if (!window.confirm(fm.dataset.confirm)) e.preventDefault(); });
+    });
+  }
   function boot() {
     initTheme();
-    scrollHints();
+    scrollHints(); sortable(); flashes();
     var rt; window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(scrollHints, 150); });
     if (!window.LightweightCharts) return;
     document.querySelectorAll("[data-chart]").forEach(function (el) {

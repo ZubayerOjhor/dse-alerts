@@ -26,7 +26,10 @@ def env(tmp_path):
     ]))
     store.upsert_fundamentals(pd.DataFrame([{"symbol": "GP", "as_of": dt.date(2025, 4, 1), "price": 134.0, "pe": 11.0, "eps": 12.0, "nav": 40.0,
                                              "dividend_yield": 8.0, "free_float_pct": 10.0, "market_cap": 1e11, "paid_up_capital": 1e10,
-                                             "face_value": 10.0, "week_high_52": 140.0, "week_low_52": 90.0}]))
+                                             "face_value": 10.0, "week_high_52": 140.0, "week_low_52": 90.0},
+                                            {"symbol": "ROBI", "as_of": dt.date(2025, 4, 1), "price": 30.0, "pe": 0.0, "eps": -1.2, "nav": 12.0,
+                                             "dividend_yield": 0.0, "free_float_pct": 10.0, "market_cap": 1e10, "paid_up_capital": 5e10,
+                                             "face_value": 10.0, "week_high_52": 40.0, "week_low_52": 25.0}]))
     from dse_alerts.analysis import features
     features.build(store)
     settings = Settings(dse_data_dir=tmp_path, app_secret_key="test-secret")
@@ -59,7 +62,9 @@ def test_first_visit_goes_to_register_then_dashboard(client):
     csrf = _csrf(client)
 
     assert client.post("/watchlist/add", data={"symbol": "gp", "csrf": csrf}).status_code == 303
-    assert client.post("/watchlist/add", data={"symbol": "NOPE", "csrf": csrf}).status_code == 404
+    r = client.post("/watchlist/add", data={"symbol": "NOPE", "csrf": csrf})
+    assert r.status_code == 303 and r.headers["location"].endswith("#add")        # the page stays; the message is on it
+    assert "not a DSE trading code" in client.get("/").text
     assert client.post("/watchlist/add", data={"symbol": "ROBI", "csrf": "wrong"}).status_code == 400
     r = client.get("/")
     watched = r.text.split("Market today")[0]      # the market section below lists every stock that traded
@@ -78,7 +83,8 @@ def test_first_visit_goes_to_register_then_dashboard(client):
     for path in ("/alerts", "/scorecard", "/rules", "/settings", "/portfolio", "/targets"):
         assert client.get(path).status_code == 200, path
     r = client.post("/settings", data={"csrf": csrf, "alert_to": "", "telegram_chat_id": "42"})
-    assert r.status_code == 303 and 'value="42"' in client.get("/settings").text
+    assert r.status_code == 303 and "Saved." in client.get("/settings?msg=settings.saved").text
+    assert 'name="telegram_chat_id"' not in client.get("/settings").text     # no bot on this site: the field stays out of the way
     codes = client.get("/instruments.json").json()
     assert codes[0]["symbol"] == "GP" and {"symbol": "NONAME", "name": ""} in codes
 
@@ -207,8 +213,7 @@ def test_ai_summary_card(env):
     client, db = env
     _register(client)
     page = client.get("/").text
-    assert 'class="ai-line' in page and "GROQ_API_KEY" in page       # off: one line that says how to turn it on, not an empty card
-    assert "AI summary" not in page
+    assert 'class="ai-line' not in page and "AI summary" not in page   # nothing fired: no AI card, no AI line
     uid = db.user("me@example.com")["id"]
     # store a digest for the latest session and it shows on the overview
     last = page.split('<time datetime="')[1].split('"')[0]
@@ -416,3 +421,92 @@ def test_landing_sample_and_rule_text_match_the_code():
         assert "2 days" not in cat["rule.psi_news.desc"] and "২ দিন" not in cat["rule.psi_news.desc"]
     psi = next(r for r in RULES if r.id == "psi_news")
     assert "since the previous session" in psi.description
+
+
+def test_uat_names_messages_and_undo(client):
+    """A company name is accepted, mistakes stay on the page, and a removal can be undone."""
+    _register(client)
+    csrf = _csrf(client)
+    r = client.post("/watchlist/add", data={"symbol": "grameenphone", "csrf": csrf, "kind": "target"}, headers={"referer": "http://testserver/targets"})
+    assert r.status_code == 303 and r.headers["location"] == "/targets#add"
+    page = client.get("/targets").text
+    assert "GP added as a target" in page and "autofocus" in page
+    # the same code again: a note, not a duplicate
+    client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf, "kind": "target"})
+    assert "already on your list" in client.get("/").text
+    # remove, then undo with the rules it had
+    client.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on", "big_drop__pct": "8", "note": "keep"})
+    r = client.post("/watchlist/remove", data={"symbol": "GP", "csrf": csrf}, headers={"referer": "http://testserver/"})
+    assert r.status_code == 303 and r.headers["location"] == "/#watched"
+    page = client.get("/").text
+    assert "GP removed" in page and 'action="/watchlist/restore"' in page and "Undo" in page
+    client.post("/watchlist/restore", data={"symbol": "GP", "kind": "target", "rules": '{"big_drop": {"pct": 0.08}}', "note": "keep", "csrf": csrf})
+    page = client.get("/symbol/GP").text
+    assert "GP is back on your list" in page and "1 custom rules" in page and 'value="8.0"' in page and "Move to watch list" in page and "Remove from my list" in page
+    client.post("/watchlist/kind", data={"symbol": "GP", "kind": "watch", "csrf": csrf})
+    page = client.get("/symbol/GP").text
+    assert "on your watch list" in page and "Mark as target" in page
+
+
+def test_uat_rule_form_errors_stay_on_the_page(client):
+    _register(client)
+    csrf = _csrf(client)
+    client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf})
+    r = client.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on", "big_drop__pct": "abc", "big_drop__days": "7", "note": "typed note"})
+    assert r.status_code == 400 and "Enter a number." in r.text and 'value="abc"' in r.text and 'value="7"' in r.text and "typed note" in r.text
+    assert "There is no page" not in r.text and "<details" in r.text and " open" in r.text.split("<details", 1)[1][:80]
+    assert 'type="number"' in r.text
+
+
+def test_uat_check_now_reports_and_portfolio_is_editable(client):
+    _register(client)
+    csrf = _csrf(client)
+    page = client.get("/").text
+    assert "Add a stock above" in page
+    client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf})
+    page = client.get("/").text
+    assert "Not checked yet" in page and "have not been checked" in page
+    r = client.post("/alerts/check", data={"csrf": csrf})
+    assert r.status_code == 303 and r.headers["location"] == "/#alerts"
+    page = client.get("/").text
+    assert "Checked 1 stocks against" in page and "Last checked" in page and "1 stocks, 0 alerts" in page
+    client.post("/watchlist/add", data={"symbol": "ROBI", "csrf": csrf})
+    page = client.get("/").text
+    assert "1 added since" in page and "ROBI" in page.split("Nothing fired on the symbols that were checked")[1][:200]
+    # holdings: typed, then uploaded, then removed; never a command line
+    page = client.get("/portfolio").text
+    assert "dse portfolio import" not in page and 'action="/portfolio/add"' in page and 'action="/portfolio/upload"' in page
+    r = client.post("/portfolio/add", data={"csrf": csrf, "account": "BO 1", "symbol": "Grameenphone", "quantity": "100", "avg_cost": "120.5"})
+    assert r.status_code == 303
+    page = client.get("/portfolio").text
+    assert "GP: 100 shares saved" in page and "BO 1" in page and 'action="/portfolio/remove"' in page
+    r = client.post("/portfolio/add", data={"csrf": csrf, "account": "BO 1", "symbol": "GP", "quantity": "x", "avg_cost": "1"})
+    assert r.status_code == 303 and "must be numbers" in client.get("/portfolio").text
+    csv = "account,symbol,quantity,avg_cost\nBO 2,ROBI,1000,31.5\n"
+    r = client.post("/portfolio/upload", data={"csrf": csrf}, files={"file": ("h.csv", csv, "text/csv")})
+    assert r.status_code == 303 and "1 holdings imported into 1 account" in client.get("/portfolio").text
+    bad = "account,symbol,quantity,avg_cost\nBO 2,NOPE,10,1\n"
+    client.post("/portfolio/upload", data={"csrf": csrf}, files={"file": ("h.csv", bad, "text/csv")})
+    assert "unknown trading codes: NOPE" in client.get("/portfolio").text
+    assert client.get("/portfolio/template.csv").text.startswith("account,symbol,quantity,avg_cost")
+    page = client.get("/portfolio").text
+    account_id = page.split('name="account_id" value="')[1].split('"')[0]
+    r = client.post("/portfolio/remove", data={"csrf": csrf, "account_id": account_id, "symbol": "GP"})
+    assert r.status_code == 303 and "GP removed from your holdings" in client.get("/portfolio").text
+
+
+def test_uat_settings_panel_is_the_operators_and_loss_makers_show_loss(env):
+    client, _db = env
+    _register(client)                                   # the operator
+    assert "<h2>This installation</h2>" in client.get("/settings").text
+    client.post("/logout")
+    client.cookies.clear()
+    client.post("/register", data={"email": "two@example.com", "password": "correct horse"})
+    page = client.get("/settings").text
+    assert "<h2>This installation</h2>" not in page and "Recent runs" not in page and "How alerts reach you" in page
+    assert 'name="telegram_chat_id"' not in page           # Telegram is off for the whole site
+    csrf = _csrf(client)
+    client.post("/watchlist/add", data={"symbol": "ROBI", "csrf": csrf, "kind": "target"})
+    page = client.get("/targets").text
+    assert ">loss<" in page and "0.0 <span" not in page
+    assert "loss" in client.get("/symbol/ROBI").text.split("Fundamentals")[1][:600]

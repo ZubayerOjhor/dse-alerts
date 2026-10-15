@@ -15,6 +15,7 @@ Run with ``dse web serve`` (uvicorn) or mount ``create_app()`` yourself.
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import logging
 import re
@@ -25,8 +26,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
@@ -142,6 +143,18 @@ def _date_filter(ctx, v) -> str:
     return fmt_date(ctx.get("lang", "en"), v)
 
 
+@pass_context
+def _when_filter(ctx, v) -> str:
+    """'2026-10-16T10:32:05' -> '16 Oct 2026, 10:32'."""
+    if not v:
+        return ""
+    try:
+        d = dt.datetime.fromisoformat(str(v))
+    except ValueError:
+        return str(v)
+    return f"{fmt_date(ctx.get('lang', 'en'), d.date())}, {d:%H:%M}"
+
+
 def _records(df: pd.DataFrame) -> list[dict]:
     if df is None or df.empty:
         return []
@@ -154,6 +167,8 @@ def _records(df: pd.DataFrame) -> list[dict]:
 
 
 log = logging.getLogger(__name__)
+
+FLASH_COOKIE = "dse_flash"
 
 
 def _localized(rows, lang: str) -> list[dict]:
@@ -199,6 +214,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     templates.env.filters["pct"] = _pct
     templates.env.filters["num"] = _num
     templates.env.filters["d"] = _date_filter
+    templates.env.filters["when"] = _when_filter
 
     # ---- helpers ----------------------------------------------------------------------
 
@@ -264,14 +280,68 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         if token != getattr(request.state, "csrf", None):
             raise HTTPException(status_code=400, detail="bad csrf token")
 
+    def read_flash(request: Request, lang: str) -> dict | None:
+        raw = request.cookies.get(FLASH_COOKIE)
+        if not raw:
+            return None
+        try:
+            f = json.loads(raw)
+            f["text"] = t(lang, f["k"], **(f.get("a") or {}))
+            return f
+        except (ValueError, KeyError, TypeError):
+            return None
+
+    def flash(request: Request, resp, key: str, tone: str = "ok", undo: dict | None = None, typed: str = "", **args):
+        """Show ``key`` on the next page: 'GP added', 'XXXX is not a trading code', with an undo for a removal."""
+        payload = {"k": key, "a": args, "tone": tone, "undo": undo, "typed": typed[:40]}
+        resp.set_cookie(FLASH_COOKIE, json.dumps(payload, ensure_ascii=False), max_age=90, samesite="lax", httponly=True, secure=is_https(request))
+        return resp
+
+    def back_to(request: Request, default: str = "/", anchor: str = "") -> RedirectResponse:
+        """Return to the page the form was on (never the top of the overview), at ``anchor``."""
+        path = _local_path(request.headers.get("referer")) if request.headers.get("referer") else default
+        path = path.split("#")[0]
+        return RedirectResponse(path + (f"#{anchor}" if anchor else ""), status_code=303)
+
     def render(request: Request, name: str, status_code: int = 200, **ctx):
         u = getattr(request.state, "user", None)
         lang = lang_of(request, u)
-        return templates.TemplateResponse(request, name, {"user": u, "csrf": getattr(request.state, "csrf", ""),
+        fl = read_flash(request, lang)
+        resp = templates.TemplateResponse(request, name, {"user": u, "csrf": getattr(request.state, "csrf", ""),
                                                           "settings": settings, "now": dt.datetime.now(),
                                                           "lang": lang, "langs": LANGS, "t": partial(t, lang),
-                                                          "demo": is_demo(u), **ctx},
+                                                          "demo": is_demo(u), "flash": fl, **ctx},
                                           status_code=status_code)
+        if fl is not None:
+            resp.delete_cookie(FLASH_COOKIE)
+        return resp
+
+    def resolve_symbol(text: str) -> tuple[str | None, list[str]]:
+        """A trading code, or a company name typed in full or in part. Returns the code and,
+        when the name fits several companies, up to five of them."""
+        inst = store.instruments()
+        q = text.strip().upper()
+        if not q:
+            return None, []
+        codes = set(inst["symbol"])
+        if q in codes:
+            return q, []
+        names = inst[["symbol", "name"]].dropna()
+        names = names.assign(up=names["name"].astype(str).str.upper())
+        exact = names[names["up"] == q]
+        if len(exact) == 1:
+            return str(exact["symbol"].iloc[0]), []
+        # a part of a name counts only when it fits exactly one company: "walton" yes, "bank" no
+        hit = names[names["up"].str.contains(re.escape(q), regex=True)]
+        if len(hit) == 1:
+            return str(hit["symbol"].iloc[0]), []
+        if len(hit) > 1:
+            hit = hit.assign(first=~hit["up"].str.startswith(q)).sort_values(["first", "symbol"])
+            opts = [f"{r.symbol} ({r.name})" for r in hit.head(5).itertuples()]
+            if len(hit) > 5:
+                opts.append(f"+{len(hit) - 5}")
+            return None, opts
+        return None, []
 
     def set_session(request: Request, resp, user_id: int, password_hash: str | None):
         resp.set_cookie(SESSION_COOKIE, sessions.issue(user_id, password_hash), max_age=SESSION_MAX_AGE, httponly=True,
@@ -460,7 +530,14 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             record_dates = market.upcoming_record_dates(store)[:8]
         highs = sum(1 for x in today if x.get("severity") == "high")
         notables = sum(1 for x in today if x.get("severity") == "notable")
-        return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today,
+        last_checked = dict(user).get("last_checked_at")
+        added_since = sorted(i["symbol"] for i in items if i.get("added_at") and (not last_checked or i["added_at"] > last_checked))
+        custom = {i["symbol"] for i in items if i.get("rules")}
+        for r in rows:
+            r["custom"] = r["symbol"] in custom
+        check = {"at": last_checked, "session": dict(user).get("last_check_session"), "symbols": dict(user).get("last_check_symbols"),
+                 "alerts": dict(user).get("last_check_alerts"), "added_since": added_since, "never": not last_checked}
+        return render(request, "dashboard.html", active="dashboard", items=items, rows=rows, market=ms, alerts=today, check=check,
                       any_circuit=any(bool(r.get("hit_upper")) or bool(r.get("hit_lower")) for r in rows
                                       if not _isnan(r.get("hit_upper")) or not _isnan(r.get("hit_lower"))),
                       index=market.index_last(store), index_chart={"series": [{"name": "DSEX", "data": market.index_series(store, 130), "area": True, "digits": 0}], "options": {}},
@@ -509,42 +586,78 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     def add_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), kind: str = Form("watch"), user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
-        sym = symbol.strip().upper()
-        if sym not in set(store.instruments()["symbol"]):
-            raise HTTPException(status_code=404, detail=t(lang_of(request, user), "error.not_code", symbol=sym))
-        appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, kind="target" if kind == "target" else "watch")
-        return RedirectResponse(_local_path(request.headers.get("referer")), status_code=303)
+        kind = "target" if kind == "target" else "watch"
+        sym, options = resolve_symbol(symbol)
+        if not sym:
+            key, args = ("flash.ambiguous", {"options": "; ".join(options)}) if options else ("flash.not_code", {"symbol": symbol.strip()[:40]})
+            return flash(request, back_to(request, anchor="add"), key, tone="error", typed=symbol.strip(), **args)
+        existing = next((i for i in appdb.items(user["id"]) if i["symbol"] == sym), None)
+        wl = appdb.ensure_watchlist(user["id"])
+        if existing and existing["kind"] == kind:
+            return flash(request, back_to(request, anchor="add"), "flash.already", symbol=sym)
+        if existing and existing["kind"] != "owned":
+            appdb.set_item_kind(wl, sym, kind)
+            return flash(request, back_to(request, anchor="add"), "flash.now_" + kind, symbol=sym)
+        appdb.add_item(wl, sym, kind=kind)
+        return flash(request, back_to(request, anchor="add"), "flash.added_" + kind, symbol=sym)
 
     @app.post("/watchlist/remove")
     def remove_symbol(request: Request, symbol: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
-        appdb.remove_item(appdb.ensure_watchlist(user["id"]), symbol.strip().upper())
-        return RedirectResponse("/", status_code=303)
+        sym = symbol.strip().upper()
+        item = next((i for i in appdb.items(user["id"]) if i["symbol"] == sym and i["kind"] != "owned"), None)
+        if not item:
+            return flash(request, back_to(request, anchor="watched"), "flash.not_on_list", tone="error", symbol=sym)
+        appdb.remove_item(appdb.ensure_watchlist(user["id"]), sym)
+        undo = {"symbol": sym, "kind": item["kind"], "rules": json.dumps(item["rules"] or {}), "note": item["note"] or ""}
+        # removing from the stock's own page leads back to the overview; elsewhere the page stays
+        on_own_page = f"/symbol/{sym}" in (request.headers.get("referer") or "")
+        resp = RedirectResponse("/#watched", status_code=303) if on_own_page else back_to(request, anchor="watched")
+        return flash(request, resp, "flash.removed", undo=undo, symbol=sym)
+
+    @app.post("/watchlist/restore")
+    def restore_symbol(request: Request, symbol: str = Form(...), kind: str = Form("watch"), rules: str = Form("{}"), note: str = Form(""),
+                       csrf: str = Form(...), user=Depends(require_user)):
+        """Undo of a removal: the symbol comes back with the rules and note it had."""
+        check_csrf(request, csrf)
+        writable(request, user)
+        sym, _ = resolve_symbol(symbol)
+        if not sym:
+            return flash(request, back_to(request, anchor="watched"), "flash.not_code", tone="error", symbol=symbol.strip()[:40])
+        try:
+            cfg = json.loads(rules or "{}")
+        except ValueError:
+            cfg = {}
+        appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, cfg if isinstance(cfg, dict) else {}, note.strip()[:500] or None,
+                       kind="target" if kind == "target" else "watch")
+        return flash(request, back_to(request, anchor="watched"), "flash.restored", symbol=sym)
 
     @app.post("/watchlist/kind")
     def set_kind(request: Request, symbol: str = Form(...), kind: str = Form(...), csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
-        sym = symbol.strip().upper()
         if kind not in ("watch", "target"):
-            raise HTTPException(status_code=400, detail="error.bad_input")
-        if sym not in set(store.instruments()["symbol"]):
-            raise HTTPException(status_code=404, detail=t(lang_of(request, user), "error.not_code", symbol=sym))
+            return flash(request, back_to(request), "error.bad_input", tone="error")
+        sym, _ = resolve_symbol(symbol)
+        if not sym:
+            return flash(request, back_to(request), "flash.not_code", tone="error", symbol=symbol.strip()[:40])
         wl = appdb.ensure_watchlist(user["id"])
         if sym not in {i["symbol"] for i in appdb.items(user["id"])}:
             appdb.add_item(wl, sym, kind=kind)
         else:
-            appdb.set_item_kind(wl, sym, "target" if kind == "target" else "watch")
-        return RedirectResponse(request.headers.get("referer") or f"/symbol/{sym}", status_code=303)
+            appdb.set_item_kind(wl, sym, kind)
+        return flash(request, back_to(request, default=f"/symbol/{sym}", anchor="watched"), "flash.now_" + kind, symbol=sym)
 
     # ---- portfolio & targets ----------------------------------------------------------
 
     @app.get("/portfolio", response_class=HTMLResponse)
     def portfolio_page(request: Request, user=Depends(require_user)):
         val = portfolio.valuation(store, appdb, user["id"])
+        holdings = appdb.holdings(user["id"])
+        account_names = sorted({h["account"] for h in holdings})
         if not val["total"]:
-            return render(request, "portfolio.html", active="portfolio", total=None, as_of=None)
+            return render(request, "portfolio.html", active="portfolio", total=None, as_of=None, holdings=holdings, account_names=account_names)
         pos = val["positions"]
         sparks = market.latest_rows(store, sorted(pos["symbol"].unique()))[["symbol", "spark", "spark_dir"]]
         pos = pos.merge(sparks, on="symbol", how="left")
@@ -552,9 +665,72 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         for name, sub in pos.groupby("account", sort=True):
             groups.append({"name": name, "rows": _records(sub.sort_values("value", ascending=False))})
         hist = portfolio.value_history(store, appdb, user["id"], 250)
+        ids = {(h["account"], h["symbol"]): h["account_id"] for h in holdings}
+        for g in groups:
+            for r in g["rows"]:
+                r["account_id"] = ids.get((g["name"], r["symbol"]))
         return render(request, "portfolio.html", active="portfolio", total=val["total"], as_of=val["as_of"],
-                      accounts=_records(val["accounts"]), positions_by_account=groups,
+                      accounts=_records(val["accounts"]), positions_by_account=groups, holdings=holdings, account_names=account_names,
                       sectors=_records(portfolio.by_group(pos, "sector")), history_chart=market.value_series(hist))
+
+    @app.get("/portfolio/template.csv")
+    def portfolio_template(user=Depends(require_user)):
+        body = ",".join(portfolio.HOLDINGS_COLUMNS) + "\nBO 1234,GP,100,312.50,318.0,2026-06-30,,\nBO 1234,SQURPHARMA,50,210.00,,,,\n"
+        return PlainTextResponse(body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=holdings.csv"})
+
+    @app.post("/portfolio/add")
+    def portfolio_add(request: Request, csrf: str = Form(...), account: str = Form(""), symbol: str = Form(...), quantity: str = Form(...),
+                      avg_cost: str = Form(...), statement_price: str = Form(""), statement_date: str = Form(""), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        writable(request, user)
+        sym, options = resolve_symbol(symbol)
+        if not sym:
+            key, args = ("flash.ambiguous", {"options": "; ".join(options)}) if options else ("flash.not_code", {"symbol": symbol.strip()[:40]})
+            return flash(request, back_to(request, "/portfolio", "holdings"), key, tone="error", typed=symbol.strip(), **args)
+
+        def num(v: str, allow_zero: bool = False) -> float | None:
+            v = v.strip().replace(",", "")
+            if not v:
+                return None
+            x = float(v)
+            if x < 0 or (x == 0 and not allow_zero):
+                raise ValueError(v)
+            return x
+
+        try:
+            qty, cost = num(quantity), num(avg_cost, allow_zero=True)
+            sp = num(statement_price)
+            if qty is None or cost is None:
+                raise ValueError("required")
+            sd = dt.date.fromisoformat(statement_date.strip()).isoformat() if statement_date.strip() else None
+        except ValueError:
+            return flash(request, back_to(request, "/portfolio", "holdings"), "flash.holding_numbers", tone="error", typed=sym)
+        acc = appdb.ensure_account(user["id"], account.strip()[:60] or "Default")
+        appdb.upsert_holding(acc, sym, qty, cost, sp, sd)
+        return flash(request, back_to(request, "/portfolio", "holdings"), "flash.holding_saved", symbol=sym, qty=f"{qty:,.0f}")
+
+    @app.post("/portfolio/upload")
+    async def portfolio_upload(request: Request, csrf: str = Form(...), file: UploadFile = File(...), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        writable(request, user)
+        raw = await file.read()
+        if len(raw) > 512 * 1024:
+            return flash(request, back_to(request, "/portfolio", "holdings"), "flash.csv_big", tone="error")
+        try:
+            df = pd.read_csv(io.BytesIO(raw), dtype=str)
+            result = portfolio.import_frame(appdb, user["id"], df, known=set(store.instruments()["symbol"]))
+        except (ValueError, pd.errors.ParserError, UnicodeDecodeError) as e:
+            return flash(request, back_to(request, "/portfolio", "holdings"), "flash.csv_bad", tone="error", why=str(e)[:160])
+        return flash(request, back_to(request, "/portfolio", "holdings"), "flash.csv_ok", rows=result["rows"], accounts=len(result["accounts"]))
+
+    @app.post("/portfolio/remove")
+    def portfolio_remove(request: Request, csrf: str = Form(...), account_id: int = Form(...), symbol: str = Form(...), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        writable(request, user)
+        if not any(a["id"] == account_id for a in appdb.accounts(user["id"])):
+            return flash(request, back_to(request, "/portfolio", "holdings"), "error.bad_input", tone="error")
+        appdb.remove_holding(account_id, symbol.strip().upper())
+        return flash(request, back_to(request, "/portfolio", "holdings"), "flash.holding_removed", symbol=symbol.strip().upper())
 
     @app.get("/targets", response_class=HTMLResponse)
     def targets_page(request: Request, user=Depends(require_user)):
@@ -577,8 +753,10 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.get("/symbol/{symbol}", response_class=HTMLResponse)
     def symbol_page(request: Request, symbol: str, user=Depends(require_user)):
+        return render(request, "symbol.html", **symbol_ctx(request, user, symbol.upper()))
+
+    def symbol_ctx(request: Request, user, sym: str) -> dict:
         lang = lang_of(request, user)
-        sym = symbol.upper()
         with store.connect(read_only=True) as con:
             inst = con.execute("SELECT * FROM instruments WHERE symbol = ?", [sym]).df()
             if inst.empty:
@@ -600,11 +778,24 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         if held:
             q = sum(h["quantity"] for h in held)
             holding = {"quantity": q, "avg_cost": sum(h["quantity"] * h["avg_cost"] for h in held) / q if q else None}
-        return render(request, "symbol.html", active="", symbol=sym, inst=inst_d, last=_records(last)[0] if not last.empty else {},
-                      ev=ev, facts=facts, stats=_records(stats)[0] if not stats.empty else None, fund=_records(fund)[0] if not fund.empty else None,
-                      news=_records(news), divs=_records(divs), item=item, holding=holding, rules=RULES, opt_in=OPT_IN,
-                      price_chart=market.ohlc(store, sym, "1y"), rel_chart=market.relative_series(store, sym, 250),
-                      alerts=_localized([a for a in appdb.alert_history(user["id"], 500) if a["symbol"] == sym][:20], lang))
+        return {"active": "", "symbol": sym, "inst": inst_d, "last": _records(last)[0] if not last.empty else {},
+                    "ev": ev, "facts": facts, "stats": _records(stats)[0] if not stats.empty else None, "fund": _records(fund)[0] if not fund.empty else None,
+                    "news": _records(news), "divs": _records(divs), "item": item, "holding": holding, "rules": RULES, "opt_in": OPT_IN,
+                    "price_chart": market.ohlc(store, sym, "1y"), "rel_chart": market.relative_series(store, sym, 250),
+                    "alerts": _localized([a for a in appdb.alert_history(user["id"], 500) if a["symbol"] == sym][:20], lang),
+                    "changed": _changed_rules(item["rules"] if item else {}, lang)}
+
+    def _changed_rules(cfg: dict, lang: str) -> list[str]:
+        """'Big drop: your own threshold, in %: 8', 'Volume spike: off' for the rules summary."""
+        out = []
+        for r in RULES:
+            v = cfg.get(r.id)
+            if v is False:
+                out.append(f"{t(lang, 'rule.' + r.id + '.name')}: {t(lang, 'settings.off')}")
+            elif isinstance(v, dict) and v:
+                parts = [f"{t(lang, 'param.' + k)} {round(x * 100, 2) if k == 'pct' else x}" for k, x in v.items()]
+                out.append(f"{t(lang, 'rule.' + r.id + '.name')}: {', '.join(parts)}")
+        return out
 
     @app.post("/symbol/{symbol}/rules")
     async def save_rules(request: Request, symbol: str, user=Depends(require_user)):
@@ -615,40 +806,50 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         if sym not in set(store.instruments()["symbol"]):
             raise HTTPException(status_code=404, detail=t(lang_of(request, user), "error.not_code", symbol=sym))
         cfg: dict = {}
-        try:
-            _parse_rule_form(form, cfg)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="error.bad_input") from None
+        errors = _parse_rule_form(form, cfg)
+        if errors:
+            # the page comes back with every typed value in place and the message beside the field
+            typed = {k: str(v) for k, v in form.items() if k != "csrf"}
+            return render(request, "symbol.html", status_code=400, form=typed, errors=errors, open_rules=True,
+                          **symbol_ctx(request, user, sym))
         note = str(form.get("note", "")).strip()[:500] or None
         appdb.add_item(appdb.ensure_watchlist(user["id"]), sym, cfg, note)
-        return RedirectResponse(f"/symbol/{sym}", status_code=303)
+        return flash(request, RedirectResponse(f"/symbol/{sym}#rules", status_code=303), "flash.rules_saved", symbol=sym)
 
-    def _parse_rule_form(form, cfg: dict) -> None:
+    def _parse_rule_form(form, cfg: dict) -> dict[str, str]:
+        """Fill ``cfg`` from the form; return {field: error key} for values that are not numbers."""
+        errors: dict[str, str] = {}
         for r in RULES:
             enabled = form.get(f"on_{r.id}") == "on"
             params = {}
             for k, default in r.params.items():
-                raw = str(form.get(f"{r.id}__{k}", "")).strip()
+                field = f"{r.id}__{k}"
+                raw = str(form.get(field, "")).strip()
                 if raw == "":
                     continue
-                if k == "pct":
-                    params[k] = float(raw) / 100.0
-                elif isinstance(default, bool):
-                    params[k] = raw.lower() in ("1", "true", "on", "yes")
-                elif isinstance(default, int) and not isinstance(default, bool):
-                    params[k] = int(raw)
-                elif isinstance(default, float):
-                    params[k] = float(raw)
-                else:
-                    try:
-                        params[k] = float(raw) if k in ("min", "max") else raw
-                    except ValueError:
+                try:
+                    if k == "pct":
+                        params[k] = float(raw) / 100.0
+                    elif isinstance(default, bool):
+                        params[k] = raw.lower() in ("1", "true", "on", "yes")
+                    elif isinstance(default, int) and not isinstance(default, bool):
+                        params[k] = int(raw)
+                    elif isinstance(default, float) or k in ("min", "max"):
+                        params[k] = float(raw)
+                    elif k == "direction":
+                        if raw.lower() not in ("up", "down", "both"):
+                            raise ValueError(raw)
+                        params[k] = raw.lower()
+                    else:
                         params[k] = raw
+                except ValueError:
+                    errors[field] = "error.number"
             if not enabled:
                 if r.id not in OPT_IN:
                     cfg[r.id] = False
             elif params or r.id in OPT_IN:
                 cfg[r.id] = params
+        return errors
 
     # ---- JSON for charts --------------------------------------------------------------
 
@@ -678,12 +879,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     def check_now(request: Request, csrf: str = Form(...), user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
+        lang = lang_of(request, user)
+        resp = RedirectResponse("/#alerts", status_code=303)
         if limiter.hit(f"check:{user['id']}", CHECK_LIMIT, CHECK_WINDOW):
-            return RedirectResponse("/", status_code=303)   # the scheduler runs it daily anyway
+            return flash(request, resp, "flash.check_recent", tone="error")   # the scheduler runs it daily anyway
         session, results = engine.run(store, appdb, record=True, user_ids=[user["id"]])
-        if results:
-            write_digest_if_due(user, session, results[0].alerts, lang=lang_of(request, user))
-        return RedirectResponse("/", status_code=303)
+        if not results or session is None:
+            return flash(request, resp, "flash.check_nothing", tone="error")
+        r = results[0]
+        write_digest_if_due(user, session, r.alerts, lang=lang)
+        return flash(request, resp, "flash.checked", n=len(r.symbols), alerts=len(r.alerts), new=len(r.new_alerts), date=fmt_date(lang, session))
 
     @app.get("/scorecard", response_class=HTMLResponse)
     def scorecard_page(request: Request, user=Depends(require_user)):
@@ -728,8 +933,8 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         from dse_alerts.notify import deliver
 
         admin = user["id"] == appdb.operator_id()
-        return {"active": "settings", "runs": appdb.last_runs(10) if admin else [], "market": market_status(), "admin": admin,
-                "accounts": appdb.accounts(user["id"]), "email_on": settings.email_enabled,
+        return {"active": "settings", "runs": appdb.last_runs(10) if admin else [], "market": market_status() if admin else None, "admin": admin,
+                "accounts": appdb.accounts(user["id"]), "email_on": settings.email_enabled, "telegram_on": settings.telegram_enabled,
                 "bot": deliver.telegram_bot_name(settings) if settings.telegram_enabled and user["telegram_code"] else ""}
 
     @app.get("/settings", response_class=HTMLResponse)

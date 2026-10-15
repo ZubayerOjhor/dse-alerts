@@ -26,7 +26,7 @@ def test_t_falls_back_and_formats():
     assert i18n.t("xx", "nav.overview") == "Overview"            # unknown language -> English
     assert i18n.t("en", "no.such.key") == "no.such.key"            # unknown key -> the key
     assert i18n.t("en", "dash.alerts_many", n=3) == "3 alerts this session"
-    assert i18n.plural("bn", 1, "email.n_alerts_one", "email.n_alerts_many") == "১টি অ্যালার্ট"
+    assert i18n.plural("bn", 1, "email.n_alerts_one", "email.n_alerts_many") == "1টি অ্যালার্ট"   # digits match the data: ASCII everywhere
     assert i18n.normalize(" BN ") == "bn" and i18n.normalize(None) == "en"
 
 

@@ -198,7 +198,7 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
             symbols,
         ).df()
         fund = con.execute(
-            f"SELECT symbol, pe, dividend_yield FROM fundamentals WHERE symbol IN ({ph}) QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY as_of DESC) = 1",
+            f"SELECT symbol, pe, eps, dividend_yield FROM fundamentals WHERE symbol IN ({ph}) QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY as_of DESC) = 1",
             symbols,
         ).df()
         news = con.execute(
@@ -218,10 +218,12 @@ def target_rows(store: MarketStore, symbols: list[str]) -> list[dict]:
             "ret_20": _f(r.ret_20), "ret_60": _f(r.ret_60), "ret_250": _f(r.ret_250), "vol_ratio_20": _f(r.vol_ratio_20),
             "high_250": hi, "low_250": lo, "range_pos": (close - lo) / (hi - lo) if hi and lo and hi > lo else None, "trend": trend,
             "pe": _f(fund_m.loc[r.symbol, "pe"]) if fund_m is not None and r.symbol in fund_m.index else None,
+            "eps": _f(fund_m.loc[r.symbol, "eps"]) if fund_m is not None and r.symbol in fund_m.index else None,
             "dividend_yield": _f(fund_m.loc[r.symbol, "dividend_yield"]) if fund_m is not None and r.symbol in fund_m.index else None,
             "sector_pe": sector_cache[r.sector],
             "last_news_date": _date(news_m.loc[r.symbol, "date"]) if news_m is not None and r.symbol in news_m.index else None,
             "last_news_title": str(news_m.loc[r.symbol, "title"]) if news_m is not None and r.symbol in news_m.index else None,
             "closes": [c / (_f(r.adj_factor) or 1.0) for c in r.closes] if r.closes is not None else [],
         })
+    out.sort(key=lambda x: x["symbol"])
     return out

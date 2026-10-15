@@ -136,6 +136,8 @@ def run(store: MarketStore, appdb: AppDB, as_of: dt.date | None = None, record: 
         for it in items:
             alerts.extend(evaluate_symbol(snap, it["symbol"], it["rules"] or {}))
         new = appdb.record_alerts(u["id"], alerts) if record else list(alerts)
+        if record:
+            appdb.record_check(u["id"], session, len(items), len(alerts))
         results.append(UserResult(
             user_id=u["id"], email=u["email"], alert_email=u["alert_email"] or u["email"],
             symbols=[it["symbol"] for it in items], alerts=alerts, new_alerts=new,

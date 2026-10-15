@@ -33,7 +33,7 @@
   <div class="row between" style="margin-bottom:8px"><h2 style="margin:0">{{ t('find.results', n=rows | length) }}{% if rows | length >= limit %} <span class="muted">({{ t('find.results_capped', n=limit) }})</span>{% endif %}</h2></div>
   {% if rows %}
   <div class="table-wrap">
-  <table class="compact">
+  <table class="compact sortable">
     <thead><tr><th>{{ t('common.symbol') }}</th><th class="hide-sm">{{ t('common.sector') }}</th><th class="hide-sm" title="{{ t('help.cat') }}">{{ t('common.cat') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.session_1') }}</th><th class="num" title="{{ t('help.sessions_20') }}">{{ t('common.sessions_20') }}</th><th class="num hide-sm" title="{{ t('help.vol20') }}">{{ t('common.vol20') }}</th><th class="hide-sm" title="{{ t('help.range_52w') }}">{{ t('common.range_52w') }}</th><th class="num" title="{{ t('help.pe') }}">{{ t('common.pe') }}</th><th class="num hide-md" title="{{ t('help.div_yield') }}">{{ t('common.div_yield') }}</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}

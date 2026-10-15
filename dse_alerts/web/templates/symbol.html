@@ -5,16 +5,19 @@
 <div class="page-head">
   <div>
     <h1>{{ symbol }} <span class="muted" style="font-weight:500">{{ inst.name or "" }}</span></h1>
-    <div class="sub meta">{% if inst.sector %}<span>{{ inst.sector }}</span>{% endif %}{% if inst.category %}<span><span class="badge cat-{{ inst.category }}" title="{{ t('help.cat') }}">{{ t('symbol.category', cat=inst.category) }}</span></span>{% endif %}{% if inst.listing_year %}<span>{{ t('symbol.listed', year=inst.listing_year) }}</span>{% endif %}{% if holding %}<span><span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span></span>{% endif %}{% if item and item.kind == 'target' %}<span><span class="badge target">{{ t('common.target') }}</span></span>{% endif %}</div>
+    <div class="sub meta">{% if inst.sector %}<span>{{ inst.sector }}</span>{% endif %}{% if inst.category %}<span><span class="badge cat-{{ inst.category }}" title="{{ t('help.cat') }}">{{ t('symbol.category', cat=inst.category) }}</span></span>{% endif %}{% if inst.listing_year %}<span>{{ t('symbol.listed', year=inst.listing_year) }}</span>{% endif %}{% if holding %}<span><span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span></span>{% endif %}{% if item and item.kind != 'owned' %}<span><span class="badge {{ item.kind }}">{{ t('symbol.on_list_' ~ item.kind) }}</span></span>{% endif %}{% if changed %}<span><a class="badge info" href="#rules">{{ t('symbol.custom_rules', n=changed | length) }}</a></span>{% endif %}</div>
   </div>
   <div class="row">
     {% if not item %}
     {% if not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.watch') }}</button></form>{% endif %}
     {% if not demo %}<form method="post" action="/watchlist/add" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button class="primary">{{ t('symbol.mark_target') }}</button></form>{% endif %}
+    {% elif item.kind == 'owned' %}
     {% elif item.kind != 'target' %}
-    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button>{{ t('symbol.mark_target') }}</button></form>{% endif %}
+    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="target"><button>{{ t('symbol.mark_target') }}</button></form>
+    <form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><button class="link danger">{{ t('symbol.remove_list') }}</button></form>{% endif %}
     {% else %}
-    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.remove_target') }}</button></form>{% endif %}
+    {% if not demo %}<form method="post" action="/watchlist/kind" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><input type="hidden" name="kind" value="watch"><button>{{ t('symbol.to_watch') }}</button></form>
+    <form method="post" action="/watchlist/remove" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="symbol" value="{{ symbol }}"><button class="link danger">{{ t('symbol.remove_list') }}</button></form>{% endif %}
     {% endif %}
   </div>
 </div>
@@ -68,7 +71,7 @@
     <h2>{{ t('symbol.fundamentals') }} {% if fund %}<span class="muted">{{ t('symbol.as_of', date=fund.as_of | d) }}</span>{% endif %}</h2>
     {% if fund %}
     <table class="compact kv">
-      <tr><td title="{{ t('help.pe') }}">{{ t('symbol.pe_sector', pe=ev.sector_pe | num) }}</td><td>{{ fund.pe | num }}</td></tr>
+      <tr><td title="{{ t('help.pe') }}">{{ t('symbol.pe_sector', pe=ev.sector_pe | num) }}</td><td>{% if fund.pe and fund.pe > 0 %}{{ fund.pe | num }}{% elif fund.eps is not none and fund.eps < 0 %}{{ t('common.loss') }} <span class="muted small">({{ t('help.loss') }})</span>{% else %}-{% endif %}</td></tr>
       <tr><td>{{ t('symbol.eps') }}</td><td>{{ fund.eps | num(2) }}</td></tr>
       <tr><td>{{ t('symbol.nav') }}</td><td>{{ fund.nav | num(2) }}</td></tr>
       <tr><td>{{ t('symbol.price_nav') }}</td><td>{{ (fund.price / fund.nav) | num(2) if fund.nav else "-" }}</td></tr>
@@ -102,33 +105,42 @@
 </div>
 
 {% if item %}
-<details class="card fold">
-  <summary>{{ t('symbol.rules_toggle', symbol=symbol) }}</summary>
+<details class="card fold" id="rules" {% if open_rules or (flash and flash.k == 'flash.rules_saved') %}open{% endif %}>
+  <summary>{{ t('symbol.rules_toggle', symbol=symbol) }}{% if changed %} <span class="badge info">{{ t('symbol.custom_rules', n=changed | length) }}</span>{% endif %}</summary>
+  {% if changed %}<p class="small" style="margin-top:10px"><strong>{{ t('symbol.changed_title') }}</strong> {{ changed | join('; ') }}</p>{% endif %}
   <p class="muted small" style="margin-top:10px">{{ t('symbol.rules_note') }}</p>
+  {% if errors %}<p class="error small">{{ t('symbol.fix_fields') }}</p>{% endif %}
   <form method="post" action="/symbol/{{ symbol }}/rules" class="rules">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     {% for r in rules %}
     {% set cfg = item.rules.get(r.id) %}
-    {% set enabled = (cfg is not sameas false) and (r.id not in opt_in or cfg is mapping) %}
+    {% set enabled = (form['on_' ~ r.id] is defined) if form else ((cfg is not sameas false) and (r.id not in opt_in or cfg is mapping)) %}
     <div class="rule">
       <label class="rule-head"><input type="checkbox" name="on_{{ r.id }}" {% if enabled %}checked{% endif %}> <strong>{{ t('rule.' ~ r.id ~ '.name') }}</strong> <span class="muted">{{ t('rule.' ~ r.id ~ '.desc') }}</span></label>
       {% if r.params %}
       <div class="params">
         {% for k, default in r.params.items() %}
-        <label>{{ t('param.' ~ k) }}
+        {% set field = r.id ~ '__' ~ k %}
+        {% set typed = form[field] if (form and field in form) else none %}
+        <label class="{{ 'bad' if errors and field in errors }}">{{ t('param.' ~ k) }}
           {% if default is sameas true or default is sameas false %}
-          {% set cur = cfg[k] if (cfg is mapping and k in cfg and cfg[k] is not none) else none %}
-          <select name="{{ r.id }}__{{ k }}"><option value="">{{ t('common.default') }} ({{ t('common.yes') if default else t('common.no') }})</option><option value="yes" {% if cur is sameas true %}selected{% endif %}>{{ t('common.yes') }}</option><option value="no" {% if cur is sameas false %}selected{% endif %}>{{ t('common.no') }}</option></select>
+          {% set cur = (typed == 'yes' if typed in ('yes', 'no') else none) if typed is not none else (cfg[k] if (cfg is mapping and k in cfg and cfg[k] is not none) else none) %}
+          <select name="{{ field }}"><option value="">{{ t('common.default') }} ({{ t('common.yes') if default else t('common.no') }})</option><option value="yes" {% if cur is sameas true %}selected{% endif %}>{{ t('common.yes') }}</option><option value="no" {% if cur is sameas false %}selected{% endif %}>{{ t('common.no') }}</option></select>
+          {% elif k == 'direction' %}
+          {% set cur = typed if typed is not none else (cfg[k] if (cfg is mapping and k in cfg) else '') %}
+          <select name="{{ field }}"><option value="">{{ t('common.default') }} ({{ default }})</option>{% for o in ['up', 'down', 'both'] %}<option value="{{ o }}" {% if cur == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
           {% else %}
-          <input name="{{ r.id }}__{{ k }}" value="{% if cfg is mapping and k in cfg and cfg[k] is not none %}{% if k == 'pct' %}{{ (cfg[k] * 100) | round(2) }}{% else %}{{ cfg[k] }}{% endif %}{% endif %}" placeholder="{% if default is not none %}{{ default }}{% else %}{{ t('symbol.baseline_ph') }}{% endif %}">
+          {% set shown = typed if typed is not none else ((cfg[k] * 100) | round(2) if (cfg is mapping and k in cfg and cfg[k] is not none and k == 'pct') else (cfg[k] if (cfg is mapping and k in cfg and cfg[k] is not none) else '')) %}
+          <input type="number" inputmode="decimal" step="{{ '1' if (default is number and default is integer) else 'any' }}" min="0" name="{{ field }}" value="{{ shown }}" placeholder="{% if default is not none %}{{ default }}{% else %}{{ t('symbol.baseline_ph') }}{% endif %}">
           {% endif %}
+          {% if errors and field in errors %}<span class="field-error">{{ t(errors[field]) }}</span>{% endif %}
         </label>
         {% endfor %}
       </div>
       {% endif %}
     </div>
     {% endfor %}
-    <label>{{ t('symbol.note') }} <input name="note" value="{{ item.note or '' }}" placeholder="{{ t('symbol.note_ph') }}"></label>
+    <label>{{ t('symbol.note') }} <input name="note" value="{{ form['note'] if (form and 'note' in form) else (item.note or '') }}" placeholder="{{ t('symbol.note_ph') }}"></label>
     <button class="primary">{{ t('symbol.save_rules') }}</button>
   </form>
 </details>

@@ -6,8 +6,34 @@
   <div><h1>{{ t('portfolio.title') }}</h1><div class="sub">{% if as_of %}{{ t('portfolio.sub', date=as_of | d) }}{% endif %}</div></div>
 </div>
 
+{% set holdings_card %}
+<div class="card" id="holdings">
+  <h2>{{ t('portfolio.holdings_t') }}</h2>
+  {% if demo %}<p class="muted small">{{ t('demo.readonly') }}</p>{% else %}
+  <p class="muted small" style="margin-top:-6px">{{ t('portfolio.holdings_note') }}</p>
+  <form method="post" action="/portfolio/add" class="holding">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>{{ t('common.account') }} <input name="account" list="accts" placeholder="{{ t('portfolio.account_ph') }}" value="{{ account_names[0] if account_names | length == 1 else '' }}"><datalist id="accts">{% for a in account_names %}<option value="{{ a }}">{% endfor %}</datalist></label>
+    <label>{{ t('common.symbol') }} <input name="symbol" list="codes" required autocomplete="off" placeholder="{{ t('dash.add_placeholder') }}" value="{{ flash.typed if flash and flash.typed else '' }}"><datalist id="codes"></datalist></label>
+    <label>{{ t('common.qty') }} <input type="number" inputmode="numeric" name="quantity" min="1" step="1" required></label>
+    <label>{{ t('common.avg_cost') }} <input type="number" inputmode="decimal" name="avg_cost" min="0" step="any" required></label>
+    <label>{{ t('portfolio.statement_price') }} <input type="number" inputmode="decimal" name="statement_price" min="0" step="any"></label>
+    <label>{{ t('portfolio.statement_date') }} <input type="date" name="statement_date"></label>
+    <div class="actions"><button class="primary">{{ t('portfolio.add_holding') }}</button></div>
+  </form>
+  <form method="post" action="/portfolio/upload" enctype="multipart/form-data" class="row" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="row" style="margin:0">{{ t('portfolio.upload') }} <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button>{{ t('portfolio.upload_btn') }}</button>
+    <a class="small" href="/portfolio/template.csv">{{ t('portfolio.template') }}</a>
+  </form>
+  <p class="help">{{ t('portfolio.upload_help') }} <a href="/learn#portfolio">{{ t('help.portfolio_link') }}</a></p>
+  {% endif %}
+</div>
+{% endset %}
+
 {% if not total %}
-<div class="card"><p class="muted">{{ t('portfolio.none') }} <code>dse portfolio import data/holdings.csv --email you@example.com</code>.</p></div>
+{{ holdings_card }}
 {% else %}
 <div class="tiles">
   <div class="tile"><div class="label">{{ t('portfolio.market_value') }}</div><div class="value">৳ {{ total.value | num(0) }}</div>
@@ -49,10 +75,10 @@
   {% if total.bonus_shares %}<p class="muted small" style="margin-top:-6px">{{ t('portfolio.bonus_note') }}</p>{% endif %}
   <div class="table-wrap">
   <table class="compact">
-    <thead><tr><th>{{ t('common.symbol') }}</th><th class="hide-md">{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num" title="{{ t('help.avg_cost') }}">{{ t('common.avg_cost') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl_pct') }}</th><th class="num hide-md" title="{{ t('help.weight') }}">{{ t('common.weight') }}</th><th class="hide-sm" title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th></tr></thead>
+    <thead><tr><th>{{ t('common.symbol') }}</th><th class="hide-md">{{ t('common.sector') }}</th><th class="num">{{ t('common.qty') }}</th><th class="num" title="{{ t('help.avg_cost') }}">{{ t('common.avg_cost') }}</th><th class="num" title="{{ t('help.close') }}">{{ t('common.close') }}</th><th class="num" title="{{ t('help.session_1') }}">{{ t('common.today') | capitalize }}</th><th class="num">{{ t('common.cost') }}</th><th class="num">{{ t('common.value') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl') }}</th><th class="num" title="{{ t('help.pnl') }}">{{ t('common.pnl_pct') }}</th><th class="num hide-md" title="{{ t('help.weight') }}">{{ t('common.weight') }}</th><th class="hide-sm" title="{{ t('help.sessions_60') }}">{{ t('common.sessions_60') }}</th>{% if not demo %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for acc in positions_by_account %}
-    <tr class="rowgroup"><td colspan="12">{{ acc.name }}</td></tr>
+    <tr class="rowgroup"><td colspan="13">{{ acc.name }}</td></tr>
     {% for p in acc.rows %}
     <tr>
       <td><a href="/symbol/{{ p.symbol }}"><strong>{{ p.symbol }}</strong></a>{% if p.category and p.category != 'A' %} <span class="badge cat-{{ p.category }}" title="{{ t('help.cat') }}">{{ p.category }}</span>{% endif %}<div class="muted small name" title="{{ p.name or '' }}">{{ p.name or "" }}</div></td>
@@ -64,6 +90,7 @@
       <td class="num {{ 'up' if p.pnl > 0 else 'down' if p.pnl < 0 }}">{{ p.pnl_pct | pct }}</td>
       <td class="num hide-md">{{ (100 * p.weight) | round(1) }}%</td>
       <td class="hide-sm"><svg class="spark {{ p.spark_dir or '' }}" viewBox="0 0 110 30" preserveAspectRatio="none"><path d="{{ p.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></td>
+      {% if not demo %}<td><form method="post" action="/portfolio/remove" class="inline" data-confirm="{{ t('portfolio.remove_confirm', symbol=p.symbol) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ p.account_id }}"><input type="hidden" name="symbol" value="{{ p.symbol }}"><button class="link danger">{{ t('common.remove') }}</button></form></td>{% endif %}
     </tr>
     {% endfor %}
     {% endfor %}
@@ -72,5 +99,12 @@
   </div>
   <p class="help"><a href="/learn#portfolio">{{ t('help.portfolio_link') }}</a></p>
 </div>
+{{ holdings_card }}
 {% endif %}
+<script>
+if (document.getElementById('codes')) fetch('/instruments.json', {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (list) {
+  var dl = document.getElementById('codes');
+  list.forEach(function (i) { var o = document.createElement('option'); o.value = i.symbol; o.label = i.name; dl.appendChild(o); });
+});
+</script>
 {% endblock %}

@@ -157,6 +157,38 @@ def telegram_updates(settings: Settings, transport=None) -> list[dict]:
     return out
 
 
+def _smtp_send(settings: Settings, msg: EmailMessage) -> None:
+    """Deliver one message. Port 465 speaks TLS from the first byte (SMTP_SSL); every other
+    port starts plain and upgrades (STARTTLS). When the server drops the connection on the
+    configured port, the other mode is tried once, which covers a port set for the wrong mode."""
+    def attempt(port: int, ssl_first: bool) -> None:
+        stage = "connect"
+        try:
+            s = smtplib.SMTP_SSL(settings.smtp_host, port, timeout=30) if ssl_first else smtplib.SMTP(settings.smtp_host, port, timeout=30)
+            with s:
+                stage = "ehlo"
+                s.ehlo()
+                if not ssl_first:
+                    stage = "starttls"
+                    s.starttls()
+                    s.ehlo()
+                stage = "login"
+                s.login(settings.smtp_user, settings.smtp_password)
+                stage = "send"
+                s.send_message(msg)
+        except Exception as e:
+            e.add_note(f"smtp stage: {stage} on port {port}")
+            raise
+
+    port = int(settings.smtp_port or 587)
+    try:
+        attempt(port, ssl_first=port == 465)
+    except (smtplib.SMTPServerDisconnected, ConnectionError, OSError) as first:
+        other = 587 if port == 465 else 465
+        log.warning("smtp on port %s dropped (%s); trying %s", port, first, other)
+        attempt(other, ssl_first=other == 465)
+
+
 def send_plain_email(settings: Settings, to: str, subject: str, body: str) -> bool:
     """A short text-only message (address confirmation). Returns True on success."""
     if not settings.email_enabled:
@@ -167,14 +199,10 @@ def send_plain_email(settings: Settings, to: str, subject: str, body: str) -> bo
     msg["To"] = to
     msg.set_content(body)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
-            s.ehlo()
-            s.starttls()
-            s.login(settings.smtp_user, settings.smtp_password)
-            s.send_message(msg)
+        _smtp_send(settings, msg)
         return True
     except Exception as e:  # noqa: BLE001
-        log.error("email to %s failed: %s", to, e)
+        log.error("email to %s failed: %s %s", to, e, " ".join(getattr(e, "__notes__", [])))
         return False
 
 
@@ -189,12 +217,8 @@ def send_email(settings: Settings, to: str, ctx: DeliveryContext) -> bool:
     msg.set_content(render.text(ctx))
     msg.add_alternative("<!doctype html><html><head><meta charset=\"utf-8\"></head>" + render.html_body(ctx) + "</html>", subtype="html")
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
-            s.ehlo()
-            s.starttls()
-            s.login(settings.smtp_user, settings.smtp_password)
-            s.send_message(msg)
+        _smtp_send(settings, msg)
         return True
     except Exception as e:  # noqa: BLE001
-        log.error("email to %s failed: %s", to, e)
+        log.error("email to %s failed: %s %s", to, e, " ".join(getattr(e, "__notes__", [])))
         return False
