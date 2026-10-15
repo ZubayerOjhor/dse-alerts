@@ -90,8 +90,10 @@ that is 20-40 minutes. Follow it with `sudo docker compose logs -f scheduler` an
 1. Open the address. **Create the first account**; that one is yours.
 2. Open a private window and press **Try the demo** to see what visitors get.
 3. Email and the AI note: `nano ~/dse-alerts/.env`, fill `SMTP_USER`, `SMTP_PASSWORD`
-   (a Gmail app password) and `GROQ_API_KEY`, then
-   `cd ~/dse-alerts && sudo docker compose --profile https up -d`.
+   (a Gmail app password, from Google Account > Security > 2-Step Verification > App
+   passwords), `ALERT_FROM` (the same address) and `GROQ_API_KEY`, then
+   `cd ~/dse-alerts && sudo docker compose --profile https up -d`. Until this is done the
+   Settings page says email is not configured and no confirmation link can go out.
 4. Put the address in the README's **Try it** line.
 
 ## What it costs, honestly

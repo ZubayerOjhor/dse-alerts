@@ -3,14 +3,29 @@ nothing is read from anywhere else, and nothing is sent anywhere the user did no
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _drop_inline_comment(cls, v):
+        """``KEY=value   # note`` in a .env: Docker Compose hands the note over as part of the
+        value, so a copied .env.example used to log in to Gmail with the user "# e.g. yourname@gmail.com".
+        A value that is only a comment is blank; a trailing comment is cut off."""
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("#"):
+                return ""
+            m = re.search(r"\s+#", s)
+            return s[: m.start()].rstrip() if m else s
+        return v
 
     # storage
     dse_data_dir: Path = Field(default=Path("./data"))
