@@ -5,7 +5,7 @@
 <div class="page-head">
   <div>
     <h1>{{ symbol }} <span class="muted" style="font-weight:500">{{ inst.name or "" }}</span></h1>
-    <div class="sub meta">{% if inst.sector %}<span>{{ inst.sector }}</span>{% endif %}{% if inst.category %}<span><span class="badge cat-{{ inst.category }}" title="{{ t('help.cat') }}">{{ t('symbol.category', cat=inst.category) }}</span></span>{% endif %}{% if inst.listing_year %}<span>{{ t('symbol.listed', year=inst.listing_year) }}</span>{% endif %}{% if holding %}<span><span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span></span>{% endif %}{% if item and item.kind != 'owned' %}<span><span class="badge {{ item.kind }}">{{ t('symbol.on_list_' ~ item.kind) }}</span></span>{% endif %}{% if changed %}<span><a class="badge info" href="#rules">{{ t('symbol.custom_rules', n=changed | length) }}</a></span>{% endif %}</div>
+    <div class="sub meta">{% if inst.sector %}<span>{{ inst.sector }}</span>{% endif %}{% if inst.category %}<span><span class="badge cat-{{ inst.category }}" title="{{ t('help.cat') }}">{{ t('symbol.category', cat=inst.category) }}</span></span>{% endif %}{% if inst.listing_year %}<span>{{ t('symbol.listed', year=inst.listing_year) }}</span>{% endif %}{% if holding %}<span><span class="badge owned">{{ t('symbol.you_hold', qty=holding.quantity | num(0), cost=holding.avg_cost | num(2)) }}</span></span>{% endif %}{% if item and item.kind != 'owned' %}<span><span class="badge {{ item.kind }}">{{ t('symbol.on_list_' ~ item.kind) }}</span></span>{% endif %}{% if changed %}<span><a class="badge info" href="#rules">{{ t('symbol.custom_rules_one') if changed | length == 1 else t('symbol.custom_rules', n=changed | length) }}</a></span>{% endif %}</div>
   </div>
   <div class="row">
     {% if not item %}
@@ -106,7 +106,7 @@
 
 {% if item %}
 <details class="card fold" id="rules" {% if open_rules or (flash and flash.k == 'flash.rules_saved') %}open{% endif %}>
-  <summary>{{ t('symbol.rules_toggle', symbol=symbol) }}{% if changed %} <span class="badge info">{{ t('symbol.custom_rules', n=changed | length) }}</span>{% endif %}</summary>
+  <summary>{{ t('symbol.rules_toggle', symbol=symbol) }}{% if changed %} <span class="badge info">{{ t('symbol.custom_rules_one') if changed | length == 1 else t('symbol.custom_rules', n=changed | length) }}</span>{% endif %}</summary>
   {% if changed %}<p class="small" style="margin-top:10px"><strong>{{ t('symbol.changed_title') }}</strong> {{ changed | join('; ') }}</p>{% endif %}
   <p class="muted small" style="margin-top:10px">{{ t('symbol.rules_note') }}</p>
   {% if errors %}<p class="error small">{{ t('symbol.fix_fields') }}</p>{% endif %}
@@ -131,7 +131,7 @@
           <select name="{{ field }}"><option value="">{{ t('common.default') }} ({{ default }})</option>{% for o in ['up', 'down', 'both'] %}<option value="{{ o }}" {% if cur == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
           {% else %}
           {% set shown = typed if typed is not none else ((cfg[k] * 100) | round(2) if (cfg is mapping and k in cfg and cfg[k] is not none and k == 'pct') else (cfg[k] if (cfg is mapping and k in cfg and cfg[k] is not none) else '')) %}
-          <input type="number" inputmode="decimal" step="{{ '1' if (default is number and default is integer) else 'any' }}" min="0" name="{{ field }}" value="{{ shown }}" placeholder="{% if default is not none %}{{ default }}{% else %}{{ t('symbol.baseline_ph') }}{% endif %}">
+          <input type="number" inputmode="decimal" step="{{ '1' if (default is number and default is integer) else 'any' }}" min="{{ '1' if (default is number and default is integer) else '0.01' }}" name="{{ field }}" value="{{ shown }}" placeholder="{% if default is not none %}{{ default }}{% else %}{{ t('symbol.baseline_ph') }}{% endif %}">
           {% endif %}
           {% if errors and field in errors %}<span class="field-error">{{ t(errors[field]) }}</span>{% endif %}
         </label>

@@ -442,7 +442,7 @@ def test_uat_names_messages_and_undo(client):
     assert "GP removed" in page and 'action="/watchlist/restore"' in page and "Undo" in page
     client.post("/watchlist/restore", data={"symbol": "GP", "kind": "target", "rules": '{"big_drop": {"pct": 0.08}}', "note": "keep", "csrf": csrf})
     page = client.get("/symbol/GP").text
-    assert "GP is back on your list" in page and "1 custom rules" in page and 'value="8.0"' in page and "Move to watch list" in page and "Remove from my list" in page
+    assert "GP is back on your list" in page and "1 custom rule<" in page and 'value="8.0"' in page and "Move to watch list" in page and "Remove from my list" in page
     client.post("/watchlist/kind", data={"symbol": "GP", "kind": "watch", "csrf": csrf})
     page = client.get("/symbol/GP").text
     assert "on your watch list" in page and "Mark as target" in page
@@ -510,3 +510,39 @@ def test_uat_settings_panel_is_the_operators_and_loss_makers_show_loss(env):
     page = client.get("/targets").text
     assert ">loss<" in page and "0.0 <span" not in page
     assert "loss" in client.get("/symbol/ROBI").text.split("Fundamentals")[1][:600]
+
+
+def test_last_review_thresholds_plural_accounts_and_promises(env):
+    """Zero or negative thresholds are refused, one rule is singular, accounts can be removed,
+    and the landing page only promises the channels this installation has (none, in tests)."""
+    client, db = env
+    page = client.get("/").text                                   # landing page: no users yet -> register; after one, the home page
+    _register(client)
+    csrf = _csrf(client)
+    client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf})
+    r = client.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on", "big_drop__pct": "-5", "big_drop__days": "0"})
+    assert r.status_code == 400 and r.text.count("Enter a number above 0.") == 2 and 'min="1"' in r.text and 'min="0.01"' in r.text
+    from dse_alerts.rules import RULES
+    from dse_alerts.rules.catalog import OPT_IN
+    on = {f"on_{r.id}": "on" for r in RULES if r.id not in OPT_IN}          # what the browser sends with the defaults ticked
+    client.post("/symbol/GP/rules", data={"csrf": csrf, "big_drop__pct": "8", **on})
+    page = client.get("/symbol/GP").text
+    assert "1 custom rule<" in page and "1 custom rules" not in page
+    # an account with a holding: removable, with its count in the confirmation
+    client.post("/portfolio/add", data={"csrf": csrf, "account": "UAT test", "symbol": "GP", "quantity": "10", "avg_cost": "100"})
+    page = client.get("/settings").text
+    assert "Remove the account UAT test and its 1 holdings?" in page and 'action="/accounts/delete"' in page
+    acc = page.split('name="account_id" value="')[1].split('"')[0]
+    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": acc}).status_code == 303
+    page = client.get("/settings").text
+    assert "Account UAT test removed with 1 holdings." in page and "UAT test</" not in page.split("Accounts")[-1][:10]
+    assert db.holdings(db.user("me@example.com")["id"]) == []
+    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": 999}).status_code == 303   # not yours / gone: no error
+    # no mail server in the tests: nothing promises email (the operator sees the installation panel instead)
+    client.post("/logout"); client.cookies.clear()
+    client.post("/register", data={"email": "two@example.com", "password": "correct horse"})
+    assert "does not send email" in client.get("/settings").text
+    client.post("/logout"); client.cookies.clear()
+    home = client.get("/").text
+    assert "Alerts appear here, in English or Bangla" in home and "by email" not in home
+    assert 'data-sort-hint="Click to sort by this column"' in home

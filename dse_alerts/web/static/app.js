@@ -191,6 +191,7 @@
       var ths = table.querySelectorAll("thead th");
       ths.forEach(function (th, i) {
         if (!th.textContent.trim()) return;
+        th.classList.add("sort"); th.title = document.body.dataset.sortHint || "";
         th.addEventListener("click", function () {
           var dir = th.classList.contains("asc") ? "desc" : "asc";
           ths.forEach(function (x) { x.classList.remove("asc", "desc"); }); th.classList.add(dir);

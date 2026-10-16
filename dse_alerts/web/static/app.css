@@ -330,7 +330,9 @@ label.bad input, label.bad select { border-color: var(--down); }
 /* ---- sortable tables ----------------------------------------------------------------------- */
 table.sortable th { cursor: pointer; user-select: none; }
 table.sortable th:hover { color: var(--accent); }
-table.sortable th.asc::after { content: " \25B4"; } table.sortable th.desc::after { content: " \25BE"; }
+table.sortable th.sort::after { content: " \2195"; opacity: .4; font-size: 11px; }    /* every sortable heading shows it */
+table.sortable th.asc::after { content: " \25B4"; opacity: 1; } table.sortable th.desc::after { content: " \25BE"; opacity: 1; }
+button.link.danger { color: var(--down); }
 /* ---- holdings entry ----------------------------------------------------------------------- */
 form.holding { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 12px; align-items: end; }
 form.holding label { margin: 0; font-size: 12.5px; } form.holding .actions { display: flex; align-items: end; }

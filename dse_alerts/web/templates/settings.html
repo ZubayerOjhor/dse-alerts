@@ -39,7 +39,7 @@
     {% if accounts %}
     <h2 style="margin-top:18px">{{ t('settings.accounts') }}</h2>
     {% for a in accounts %}
-    <form method="post" action="/accounts/rename" class="row" style="margin:6px 0"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ a.id }}"><input name="name" value="{{ a.name }}" style="width:260px" {% if demo %}disabled{% endif %}>{% if not demo %}<button>{{ t('settings.rename') }}</button>{% endif %}</form>
+    <div class="row" style="margin:6px 0;gap:10px;align-items:center"><form method="post" action="/accounts/rename" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ a.id }}"><input name="name" value="{{ a.name }}" style="width:260px" {% if demo %}disabled{% endif %}>{% if not demo %}<button>{{ t('settings.rename') }}</button>{% endif %}</form>{% if not demo %}<form method="post" action="/accounts/delete" class="inline" data-confirm="{{ t('settings.remove_account_confirm', name=a.name, n=holding_counts.get(a.id, 0)) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ a.id }}"><button class="link danger">{{ t('settings.remove_account') }}</button></form>{% endif %}</div>
     {% endfor %}
     {% endif %}
   </div>
@@ -63,7 +63,7 @@
   {% else %}
   <div class="card">
     <h2>{{ t('settings.how_t') }}</h2>
-    <p class="small">{{ t('settings.how_body') }}</p>
+    <p class="small">{{ t('settings.how_body') if email_on else t('settings.how_body_site') }}</p>
     <p class="small muted">{{ t('settings.email_on_site') if email_on else t('settings.email_unavailable') }}</p>
   </div>
   {% endif %}

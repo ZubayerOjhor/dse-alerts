@@ -507,7 +507,7 @@
   "home.step2_t": "2. Rules check every session",
   "home.step2_b": "After the 2:30 pm close the data is refreshed and each stock is checked against the rules. Every rule is explained on the Learn page, with how often it fires and what tended to follow.",
   "home.step3_t": "3. Read the alert, in your language",
-  "home.step3_b": "Alerts appear here and, if you want, by email or Telegram, in English or Bangla, with a short AI note that explains the terms. The scorecard later shows what happened after each alert.",
+  "home.step3_b": "Alerts appear here{channels}, in English or Bangla, with a short AI note that explains the terms. The scorecard later shows what happened after each alert.",
   "home.what_t": "What you get",
   "home.f1": "Overview of your stocks: close, moves over 1 and 20 sessions, volume against the usual, circuit hits and a 60-session sparkline.",
   "home.f2": "Portfolio value, profit or loss and weights from your broker statement, across several accounts.",
@@ -656,5 +656,15 @@
   "portfolio.remove_confirm": "Remove {symbol} from your holdings?",
   "settings.how_t": "How alerts reach you",
   "settings.how_body": "After each session the rules run over everyone's list. New alerts appear on the overview, and go to the confirmed email address above.",
-  "settings.email_on_site": "This site can send email."
+  "settings.email_on_site": "This site can send email.",
+  "home.ch_email_tg": " and, if you want, by email or Telegram",
+  "home.ch_email": " and, if you want, by email",
+  "home.ch_none": "",
+  "settings.how_body_site": "After each session the rules run over everyone's list. New alerts appear on the overview. This installation does not send email, so the site is where you read them.",
+  "error.positive": "Enter a number above 0.",
+  "symbol.custom_rules_one": "1 custom rule",
+  "settings.remove_account": "Remove",
+  "settings.remove_account_confirm": "Remove the account {name} and its {n} holdings? This cannot be undone.",
+  "flash.account_removed": "Account {name} removed with {n} holdings.",
+  "common.sort_hint": "Click to sort by this column"
 }

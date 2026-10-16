@@ -293,6 +293,13 @@ class AppDB:
         with self.connect() as con:
             con.execute("UPDATE accounts SET name = ? WHERE id = ?", (name, account_id))
 
+    def delete_account(self, account_id: int) -> int:
+        """Remove an account and every holding in it; returns how many holdings went with it."""
+        with self.connect() as con:
+            n = con.execute("DELETE FROM holdings WHERE account_id = ?", (account_id,)).rowcount
+            con.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+            return n
+
     def accounts(self, user_id: int) -> list[sqlite3.Row]:
         with self.connect() as con:
             return con.execute("SELECT * FROM accounts WHERE user_id = ? ORDER BY name", (user_id,)).fetchall()

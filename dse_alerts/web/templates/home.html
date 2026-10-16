@@ -23,7 +23,7 @@
 
 <div class="grid cols-3 steps">
   {% for n in [1, 2, 3] %}
-  <div class="card"><h3>{{ t('home.step' ~ n ~ '_t') }}</h3><p>{{ t('home.step' ~ n ~ '_b') }}</p></div>
+  <div class="card"><h3>{{ t('home.step' ~ n ~ '_t') }}</h3><p>{% if n == 3 %}{{ t('home.step3_b', channels=t('home.ch_email_tg' if (email_on and telegram_on) else 'home.ch_email' if email_on else 'home.ch_none')) }}{% else %}{{ t('home.step' ~ n ~ '_b') }}{% endif %}</p></div>
   {% endfor %}
 </div>
 

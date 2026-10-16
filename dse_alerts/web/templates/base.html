@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17l5-6 4 4 9-10' fill='none' stroke='%232a78d6' stroke-width='3'/%3E%3C/svg%3E">
 </head>
-<body data-scroll-hint="{{ t('common.scroll_hint') }}" data-chart-words="{{ t('chart.bonus', pct='{pct}') }}|{{ t('chart.ex_date') }}">
+<body data-scroll-hint="{{ t('common.scroll_hint') }}" data-sort-hint="{{ t('common.sort_hint') }}" data-chart-words="{{ t('chart.bonus', pct='{pct}') }}|{{ t('chart.ex_date') }}">
 <header class="top">
   <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 9-10" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>dse-alerts</a>
   {% if user %}

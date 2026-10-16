@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import secrets
+from collections import Counter
 from email.utils import parseaddr
 from functools import partial
 from pathlib import Path
@@ -508,6 +509,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             if not appdb.users():
                 return RedirectResponse("/register", status_code=303)
             return render(request, "home.html", active="home", market=market_status(), demo_available=demo_available(),
+                          email_on=settings.email_enabled, telegram_on=settings.telegram_enabled,
                           registration=registration_open(), **market_today())
         request.state.user = user
         lang = lang_of(request, user)
@@ -749,6 +751,17 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             appdb.rename_account(account_id, name.strip())
         return RedirectResponse("/settings", status_code=303)
 
+    @app.post("/accounts/delete")
+    def delete_account(request: Request, account_id: int = Form(...), csrf: str = Form(...), user=Depends(require_user)):
+        check_csrf(request, csrf)
+        writable(request, user)
+        acc = next((a for a in appdb.accounts(user["id"]) if a["id"] == account_id), None)
+        resp = RedirectResponse("/settings", status_code=303)
+        if acc:
+            n = appdb.delete_account(account_id)
+            flash(request, resp, "flash.account_removed", name=acc["name"], n=n)
+        return resp
+
     # ---- symbol -----------------------------------------------------------------------
 
     @app.get("/symbol/{symbol}", response_class=HTMLResponse)
@@ -842,6 +855,8 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                         params[k] = raw.lower()
                     else:
                         params[k] = raw
+                    if isinstance(params[k], (int, float)) and not isinstance(params[k], bool) and params[k] <= 0:
+                        errors[field] = "error.positive"          # a 0% move or 0 sessions would fire on everything, or never
                 except ValueError:
                     errors[field] = "error.number"
             if not enabled:
@@ -935,6 +950,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         admin = user["id"] == appdb.operator_id()
         return {"active": "settings", "runs": appdb.last_runs(10) if admin else [], "market": market_status() if admin else None, "admin": admin,
                 "accounts": appdb.accounts(user["id"]), "email_on": settings.email_enabled, "telegram_on": settings.telegram_enabled,
+                "holding_counts": Counter(h["account_id"] for h in appdb.holdings(user["id"])),
                 "bot": deliver.telegram_bot_name(settings) if settings.telegram_enabled and user["telegram_code"] else ""}
 
     @app.get("/settings", response_class=HTMLResponse)
