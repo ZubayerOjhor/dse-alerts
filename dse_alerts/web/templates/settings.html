@@ -7,8 +7,10 @@
   <div class="card">
     <h2>{{ t('settings.account') }}</h2>
     {% if msg %}<p class="error">{{ t(msg) }}</p>{% endif %}
+    {% if demo %}<p class="note small">{{ t('demo.readonly') }} {{ t('demo.lang_hint') }}</p>{% endif %}
     <form method="post" action="/settings">
       <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="plain" {% if demo %}disabled{% endif %}>
       <label>{{ t('settings.login_email') }} <input value="{{ user.email }}" disabled></label>
       <label>{{ t('settings.alert_to') }} <input type="email" name="alert_to" value="{{ user.alert_email or user.email }}" {% if demo %}disabled{% endif %}></label>
       {% if telegram_on %}<label>{{ t('settings.telegram') }} <span class="muted">{{ t('settings.telegram_note') }}</span> <input name="telegram_chat_id" value="{{ user.telegram_chat_id or '' }}" inputmode="numeric" {% if demo %}disabled{% endif %}></label>{% endif %}
@@ -16,16 +18,18 @@
         <select name="lang">{% for code, name in langs.items() %}<option value="{{ code }}" {% if (user.lang or 'en') == code %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label class="check"><input type="checkbox" name="digest" {% if user.digest_enabled %}checked{% endif %}> {{ t('settings.digest') }}</label>
       <label>{{ t('settings.new_password') }} <span class="muted">{{ t('settings.keep') }}</span> <input type="password" name="password" minlength="8" {% if demo %}disabled{% endif %}></label>
-      {% if not demo %}<button class="primary">{{ t('common.save') }}</button>{% else %}<p class="muted small">{{ t('demo.readonly') }}</p>{% endif %}
+      </fieldset>
+      {% if not demo %}<button class="primary">{{ t('common.save') }}</button>{% endif %}
     </form>
-    {% if not demo %}
+    {% if not demo and (email_on or telegram_on) %}
     <h2 style="margin-top:18px">{{ t('settings.delivery') }}</h2>
     {% set dest = user.alert_email or user.email %}
-    {% if dest == user.email_confirmed %}
+    {% if not email_on %}
+    {% elif dest == user.email_confirmed %}
     <p class="small">{{ t('settings.email_confirmed', email=dest) }}</p>
     {% else %}
     <p class="small"><span class="error">{{ t('settings.email_unconfirmed', email=dest) }}</span>
-      {% if email_on %}<form method="post" action="/confirm/resend" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ t('settings.resend') }}</button></form>{% else %}{{ t('settings.email_unavailable') }}{% endif %}</p>
+      <form method="post" action="/confirm/resend" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ t('settings.resend') }}</button></form></p>
     {% endif %}
     {% if user.telegram_chat_id and telegram_on %}
       {% if user.telegram_chat_id == user.telegram_confirmed %}
@@ -64,7 +68,7 @@
   <div class="card">
     <h2>{{ t('settings.how_t') }}</h2>
     <p class="small">{{ t('settings.how_body') if email_on else t('settings.how_body_site') }}</p>
-    <p class="small muted">{{ t('settings.email_on_site') if email_on else t('settings.email_unavailable') }}</p>
+    {% if email_on %}<p class="small muted">{{ t('settings.email_on_site') }}</p>{% endif %}
   </div>
   {% endif %}
 </div>

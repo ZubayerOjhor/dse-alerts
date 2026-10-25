@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17l5-6 4 4 9-10' fill='none' stroke='%232a78d6' stroke-width='3'/%3E%3C/svg%3E">
 </head>
-<body data-scroll-hint="{{ t('common.scroll_hint') }}" data-sort-hint="{{ t('common.sort_hint') }}" data-chart-words="{{ t('chart.bonus', pct='{pct}') }}|{{ t('chart.ex_date') }}">
+<body data-scroll-hint="{{ t('common.scroll_hint') }}" data-sort-hint="{{ t('common.sort_hint') }}">
 <header class="top">
   <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 9-10" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>dse-alerts</a>
   {% if user %}
@@ -56,6 +56,13 @@
   <p>{{ t('footer.notice') }}</p>
 </footer>
 <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+<script type="application/json" id="chart-i18n">{{ {"close": t('chart.close'), "open_s": t('chart.open_s'), "high_s": t('chart.high_s'), "low_s": t('chart.low_s'),
+  "sma20": t('chart.sma20'), "sma50": t('chart.sma50'), "volume": t('chart.volume'), "bonus": t('chart.bonus', pct='{pct}'), "ex_date": t('chart.ex_date'),
+  "loading": t('chart.loading', range='{range}'), "showing": t('chart.showing', range='{range}'), "failed": t('chart.failed', range='{range}', shown='{shown}'),
+  "price_summary": t('chart.price_summary', symbol='{symbol}', range='{range}', n='{n}', start='{start}', end='{end}', close='{close}', high='{high}', low='{low}'),
+  "lines_summary": t('chart.lines_summary', series='{series}', start='{start}', end='{end}'), "series_from_to": t('chart.series_from_to', name='{name}', a='{a}', b='{b}'),
+  "table_caption": t('chart.table_caption', n='{n}', range='{range}'), "sorted": t('common.sorted', col='{col}', dir='{dir}'), "asc": t('common.asc'), "desc": t('common.desc'),
+  "months": t('date.months').split('|')} | tojson }}</script>
 <script src="/static/app.js"></script>
 </body>
 </html>

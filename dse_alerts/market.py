@@ -240,17 +240,23 @@ def upcoming_record_dates(store: MarketStore, symbols: list[str] | None = None, 
     return _recs(df)
 
 
-SCREEN_SORTS = {"ret_1": "f.ret_1 DESC", "ret_20": "f.ret_20 DESC", "pe": "fu.pe ASC", "dy": "fu.dividend_yield DESC",
-                "volume": "f.vol_ratio_20 DESC", "symbol": "f.symbol ASC", "range": "range_pos ASC"}
+# column -> (SQL expression, default direction). P/E sorts only positive values; a loss-maker's
+# 0 or negative P/E goes last in either direction instead of looking like the cheapest stock.
+SCREEN_SORTS = {"symbol": ("f.symbol", "asc"), "sector": ("i.sector", "asc"), "category": ("i.category", "asc"),
+                "close": ("f.close", "desc"), "ret_1": ("f.ret_1", "desc"), "ret_20": ("f.ret_20", "desc"),
+                "volume": ("f.vol_ratio_20", "desc"), "range": ("range_pos", "asc"),
+                "pe": ("CASE WHEN fu.pe > 0 THEN fu.pe END", "asc"), "dy": ("fu.dividend_yield", "desc")}
 
 
 def screen(store: MarketStore, sector: str | None = None, category: str | None = None, pe_min: float | None = None,
            pe_max: float | None = None, ret20_min: float | None = None, ret20_max: float | None = None,
            near: str | None = None, vol_min: float | None = None, price_max: float | None = None,
-           sort: str = "ret_1", limit: int = 150) -> list[dict]:
+           sort: str = "ret_1", direction: str | None = None, limit: int = 50, offset: int = 0) -> dict:
     """The stock finder: every stock that traded in the latest session, filtered by simple
     conditions. ``ret20_*`` are fractions (0.1 = 10%); ``near`` is 'low' or 'high' for the
-    bottom / top 15% of the 52-week range."""
+    bottom / top 15% of the 52-week range. The whole filtered set is sorted in SQL before
+    ``limit``/``offset`` cut a page, so the first row is the true extreme. Returns
+    ``{"rows": [...], "total": n}`` where ``total`` counts every match."""
     where, params = [_TRADED], []
     if sector:
         where.append("i.sector = ?"); params.append(sector)
@@ -272,26 +278,32 @@ def screen(store: MarketStore, sector: str | None = None, category: str | None =
         where.append("f.high_250 > f.low_250 AND (f.close - f.low_250) / (f.high_250 - f.low_250) <= 0.15")
     elif near == "high":
         where.append("f.high_250 > f.low_250 AND (f.close - f.low_250) / (f.high_250 - f.low_250) >= 0.85")
-    order = SCREEN_SORTS.get(sort, SCREEN_SORTS["ret_1"])
-    with store.connect(read_only=True) as con:
-        df = con.execute(
-            f"""
+    expr, default_dir = SCREEN_SORTS.get(sort, SCREEN_SORTS["ret_1"])
+    direction = direction if direction in ("asc", "desc") else default_dir
+    fu_cte = """
             WITH fu AS (
                 SELECT symbol, pe, dividend_yield, market_cap FROM fundamentals
                 QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY as_of DESC) = 1
-            )
+            )"""
+    with store.connect(read_only=True) as con:
+        total = con.execute(
+            f"""{fu_cte}
+            SELECT count(*) FROM features f JOIN instruments i USING (symbol) LEFT JOIN fu USING (symbol)
+            WHERE {" AND ".join(where)}""", params).fetchone()[0]
+        df = con.execute(
+            f"""{fu_cte}
             SELECT f.symbol, i.name, i.sector, i.category, f.close, f.ret_1, f.ret_20, f.vol_ratio_20, f.volume,
                    fu.pe, fu.dividend_yield, fu.market_cap,
                    CASE WHEN f.high_250 > f.low_250 THEN (f.close - f.low_250) / (f.high_250 - f.low_250) END AS range_pos,
                    f.hit_upper, f.hit_lower
             FROM features f JOIN instruments i USING (symbol) LEFT JOIN fu USING (symbol)
             WHERE {" AND ".join(where)}
-            ORDER BY {order} NULLS LAST, f.symbol
-            LIMIT {int(limit)}
+            ORDER BY {expr} {direction.upper()} NULLS LAST, f.symbol
+            LIMIT {max(1, int(limit))} OFFSET {max(0, int(offset))}
             """,
             params,
         ).df()
-    return _recs(df)
+    return {"rows": _recs(df), "total": int(total)}
 
 
 def sectors(store: MarketStore) -> list[str]:

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ t('confirm.title') }} - dse-alerts{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px">
+  <h1 style="font-size:20px;margin-top:0">{{ t('confirm.title') }}</h1>
+  <p>{{ message }}</p>
+  <form method="post" action="{{ action }}" class="row" style="gap:12px;align-items:center">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="confirmed" value="1">
+    {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <button class="primary danger">{{ t('confirm.yes') }}</button>
+    <a class="btn" href="{{ cancel }}">{{ t('confirm.cancel') }}</a>
+  </form>
+</div>
+{% endblock %}

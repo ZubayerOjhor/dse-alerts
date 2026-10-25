@@ -40,13 +40,19 @@
 <div class="card">
   <div class="row between" style="margin-bottom:8px">
     <h2 style="margin:0">{{ t('symbol.price_chart') }}</h2>
-    <div class="seg" data-range-for="price">
-      <button type="button" data-range="3m">3M</button><button type="button" data-range="6m">6M</button>
-      <button type="button" data-range="1y" class="active">1Y</button><button type="button" data-range="3y">3Y</button><button type="button" data-range="all">All</button>
+    <div class="seg" role="group" aria-label="{{ t('chart.range_group') }}" data-range-for="price">
+      {% for r in ['3m', '6m', '1y', '3y', 'all'] %}<button type="button" data-range="{{ r }}" data-name="{{ t('chart.rn_' ~ r) }}" aria-label="{{ t('chart.rn_' ~ r) }}" aria-pressed="{{ 'true' if r == '1y' else 'false' }}" class="{{ 'active' if r == '1y' }}">{{ t('chart.r_' ~ r) }}</button>{% endfor %}
     </div>
   </div>
-  <div id="price" class="chart tall" data-chart="price" data-src="price-data" data-api="/api/ohlc/{{ symbol }}"></div>
+  <p class="chart-status small muted" id="price-status" role="status" aria-live="polite">{{ t('chart.showing', range=t('chart.rn_1y')) }}</p>
+  <div class="chart-error" id="price-error" role="alert" hidden><span class="msg"></span> <button type="button" class="link" data-retry>{{ t('chart.retry') }}</button></div>
+  <div id="price" class="chart tall" data-chart="price" data-src="price-data" data-api="/api/ohlc/{{ symbol }}" data-symbol="{{ symbol }}" data-shown="1y"
+       data-status="price-status" data-error="price-error" data-table="price-table"></div>
   <script type="application/json" id="price-data">{{ price_chart | tojson }}</script>
+  <details class="chart-data"><summary>{{ t('chart.as_table') }}</summary>
+    <div class="table-wrap"><table class="compact" id="price-table"><caption class="sr-only"></caption>
+      <thead><tr><th scope="col">{{ t('chart.date') }}</th><th scope="col" class="num">{{ t('chart.open') }}</th><th scope="col" class="num">{{ t('chart.high') }}</th><th scope="col" class="num">{{ t('chart.low') }}</th><th scope="col" class="num">{{ t('chart.close') }}</th><th scope="col" class="num">{{ t('chart.volume') }}</th></tr></thead><tbody></tbody></table></div>
+  </details>
 </div>
 
 <div class="grid cols-2">

@@ -328,10 +328,27 @@ tr.repeat td { color: var(--muted); }
 .field-error { display: block; color: var(--down); font-size: 12px; margin-top: 3px; }
 label.bad input, label.bad select { border-color: var(--down); }
 /* ---- sortable tables ----------------------------------------------------------------------- */
-table.sortable th { cursor: pointer; user-select: none; }
-table.sortable th:hover { color: var(--accent); }
-table.sortable th.sort::after { content: " \2195"; opacity: .4; font-size: 11px; }    /* every sortable heading shows it */
-table.sortable th.asc::after { content: " \25B4"; opacity: 1; } table.sortable th.desc::after { content: " \25BE"; opacity: 1; }
+.th-sort { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+           text-align: inherit; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.th-sort:hover { color: var(--accent); }
+.th-sort:focus-visible, .seg button:focus-visible, .pager a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+th[aria-sort] .th-sort::after { content: " \2195"; opacity: .4; font-size: 11px; }        /* every sortable heading shows it */
+th[aria-sort="ascending"] .th-sort::after { content: " \25B4"; opacity: 1; }
+th[aria-sort="descending"] .th-sort::after { content: " \25BE"; opacity: 1; }
+.table-wrap { position: relative; }       /* keeps .sr-only text inside the scrolling box, not widening the page */
+.sr-only { position: absolute; left: 0; top: 0; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.chart-status { margin: 0 0 6px; min-height: 1.3em; }
+.chart-error { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); color: var(--down); font-size: 13px; }
+.chart.loading { opacity: .55; transition: opacity .15s; }
+details.chart-data { margin-top: 10px; } details.chart-data summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.pager { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 4px; }
+.pager .page { min-width: 30px; padding: 4px 8px; text-align: center; border-radius: 6px; font-size: 13px; text-decoration: none; color: var(--ink-2); }
+.pager a.page:hover { background: var(--surface-2); }
+.pager .page.current { background: var(--accent); color: var(--surface); font-weight: 600; }
+.pager .btn.disabled { opacity: .45; pointer-events: none; }
+fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.plain[disabled] input, fieldset.plain[disabled] select { opacity: .6; cursor: not-allowed; }
+p.note { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
 button.link.danger { color: var(--down); }
 /* ---- holdings entry ----------------------------------------------------------------------- */
 form.holding { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 12px; align-items: end; }
@@ -340,3 +357,4 @@ input[type=file] { font: inherit; font-size: 13px; max-width: 260px; }
 input[type=date] { padding: 7px 11px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--bg); color: var(--ink); font: inherit; }
 .page-head .check { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
 @media (max-width: 760px) { .page-head .check { align-items: flex-start; text-align: left; } }
+input:disabled, select:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }   /* read-only fields look read-only (demo) */

@@ -18,13 +18,14 @@ import datetime as dt
 import io
 import json
 import logging
+import math
 import re
 import secrets
 from collections import Counter
 from email.utils import parseaddr
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import pandas as pd
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -70,10 +71,27 @@ FIND_PRESETS = {
     "volume": {"vol_min": 2.0, "sort": "volume"},
     "cheap": {"category": "A", "pe_max": 10.0, "sort": "pe"},
     "dividend": {"category": "A", "sort": "dy"},
-    "fallen": {"ret20_max": -15.0, "sort": "ret_20"},
+    "fallen": {"ret20_max": -15.0, "sort": "ret_20", "dir": "asc"},
     "risen": {"ret20_min": 15.0, "sort": "ret_20"},
 }
-FIND_LIMIT = 150
+FIND_PAGE = 50
+FIND_NUMS = ("pe_min", "pe_max", "ret20_min", "ret20_max", "vol_min", "price_max")
+FIND_PAIRS = (("pe_min", "pe_max"), ("ret20_min", "ret20_max"))
+FIND_COLUMNS = ("symbol", "sector", "category", "close", "ret_1", "ret_20", "volume", "range", "pe", "dy")
+
+
+def _named(chart: dict, lang: str) -> dict:
+    """Series names that come out of market.py in English, in the page language."""
+    names = {"Book value": "chart.book_value", "Cost": "chart.cost"}
+    for s in chart.get("series", []):
+        if s.get("name") in names:
+            s["name"] = t(lang, names[s["name"]])
+    return chart
+
+
+def _plain(v) -> str:
+    """A preset number as a user would type it: 10 not 10.0."""
+    return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
 
 LOGIN_LIMIT_PER_IP, LOGIN_LIMIT_PER_EMAIL, LOGIN_WINDOW = 30, 10, 15 * 60
 REGISTER_LIMIT_PER_IP, REGISTER_WINDOW = 5, 60 * 60
@@ -552,30 +570,85 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
     # ---- stock finder and the learn page ----------------------------------------------
 
     @app.get("/find", response_class=HTMLResponse)
-    def find_page(request: Request, user=Depends(require_user), preset: str = "", sector: str = "", category: str = "",
-                  pe_min: str = "", pe_max: str = "", ret20_min: str = "", ret20_max: str = "", vol_min: str = "",
-                  price_max: str = "", near: str = "", sort: str = "ret_1"):
-        lang = lang_of(request, user)
+    def find_page(request: Request, user=Depends(require_user)):
+        """Filters, sort column and direction, and page all live in the query string, so links,
+        the back button and a reload show the same result. A preset fills defaults; anything in
+        the query overrides it."""
+        qp = request.query_params
+        preset = qp.get("preset", "")
+        preset = preset if preset in FIND_PRESETS else ""
+        base = FIND_PRESETS.get(preset, {})
 
-        def num(v: str):
+        def pick(k: str) -> str:
+            return qp.get(k, "").strip()[:40] if k in qp else _plain(base.get(k, ""))
+
+        raw = {k: pick(k) for k in FIND_NUMS}
+        vals: dict[str, float | None] = {}
+        errors: dict[str, str] = {}
+        for k in FIND_NUMS:
+            if raw[k] == "":
+                vals[k] = None
+                continue
             try:
-                return float(v) if v.strip() else None
+                f = float(raw[k])
             except ValueError:
-                return None
+                f = math.nan
+            if not math.isfinite(f):          # "nan", "inf" and plain words are all refused
+                errors[k], vals[k] = "error.number", None
+            else:
+                vals[k] = f
+        for lo, hi in FIND_PAIRS:
+            if vals[lo] is not None and vals[hi] is not None and vals[lo] > vals[hi]:
+                errors[lo] = errors[hi] = "error.range_order"
+        sectors = market.sectors(store)
+        sector = pick("sector")[:60]            # an unknown sector is kept: it matches nothing, and says so
+        category = pick("category").upper() if pick("category").upper() in ("A", "B", "N", "Z") else ""
+        near = pick("near") if pick("near") in ("low", "high") else ""
+        sort = pick("sort") if pick("sort") in market.SCREEN_SORTS else "ret_1"
+        direction = pick("dir") if pick("dir") in ("asc", "desc") else market.SCREEN_SORTS[sort][1]
+        try:
+            page = max(1, int(qp.get("page", "1")))
+        except ValueError:
+            page = 1
+        rows, total = [], 0
+        if not errors:
+            def run(p: int) -> dict:
+                return market.screen(store, sector=sector or None, category=category or None, pe_min=vals["pe_min"], pe_max=vals["pe_max"],
+                                     ret20_min=None if vals["ret20_min"] is None else vals["ret20_min"] / 100,
+                                     ret20_max=None if vals["ret20_max"] is None else vals["ret20_max"] / 100,
+                                     near=near or None, vol_min=vals["vol_min"], price_max=vals["price_max"],
+                                     sort=sort, direction=direction, limit=FIND_PAGE, offset=(p - 1) * FIND_PAGE)
+            res = run(page)
+            total = res["total"]
+            last_page = max(1, -(-total // FIND_PAGE))
+            if page > last_page:                 # an old link to page 9 of what is now 3 pages
+                page = last_page
+                res = run(page)
+            rows = res["rows"]
+        pages = max(1, -(-total // FIND_PAGE))
+        state = {"preset": preset, "sector": sector, "category": category, **raw, "near": near, "sort": sort, "dir": direction}
 
-        q = {"sector": sector or None, "category": category.upper() or None, "pe_min": num(pe_min), "pe_max": num(pe_max),
-             "ret20_min": num(ret20_min), "ret20_max": num(ret20_max), "vol_min": num(vol_min), "price_max": num(price_max),
-             "near": near if near in ("low", "high") else None, "sort": sort if sort in market.SCREEN_SORTS else "ret_1"}
-        if preset in FIND_PRESETS:
-            q.update(FIND_PRESETS[preset])
-        rows = market.screen(store, sector=q["sector"], category=q["category"], pe_min=q["pe_min"], pe_max=q["pe_max"],
-                             ret20_min=None if q["ret20_min"] is None else q["ret20_min"] / 100,
-                             ret20_max=None if q["ret20_max"] is None else q["ret20_max"] / 100,
-                             near=q["near"], vol_min=q["vol_min"], price_max=q["price_max"], sort=q["sort"], limit=FIND_LIMIT)
+        def find_url(**over) -> str:
+            s = {**state, "page": page, **over}
+            s = {k: v for k, v in s.items() if v not in ("", None) and not (k == "page" and int(v) == 1)}
+            return "/find" + ("?" + urlencode(s) if s else "")
+
+        def sort_url(col: str) -> str:
+            nd = ("asc" if direction == "desc" else "desc") if col == sort else market.SCREEN_SORTS[col][1]
+            return find_url(sort=col, dir=nd, page=1)
+
+        def aria_sort(col: str) -> str:
+            return ("ascending" if direction == "asc" else "descending") if col == sort else "none"
+
         watched = {i["symbol"] for i in appdb.items(user["id"])} | {h["symbol"] for h in appdb.holdings(user["id"])}
+        lang = lang_of(request, user)
         presets = [(pid, t(lang, "find.p_" + pid)) for pid in FIND_PRESETS]
-        return render(request, "find.html", active="find", rows=rows, q=q, preset=preset if preset in FIND_PRESETS else ("" if any(
-            v for k, v in q.items() if k != "sort") else "all"), presets=presets, sectors=market.sectors(store), watched=watched, limit=FIND_LIMIT)
+        filtered = any(v for k, v in state.items() if k not in ("sort", "dir", "preset"))
+        q = {"sector": sector, "category": category, "near": near, "sort": sort, "dir": direction}
+        return render(request, "find.html", status_code=400 if errors else 200, active="find", rows=rows, total=total, page=page,
+                      pages=pages, first=(page - 1) * FIND_PAGE + 1 if rows else 0, last=(page - 1) * FIND_PAGE + len(rows),
+                      raw=raw, errors=errors, q=q, preset=preset or ("" if filtered else "all"), presets=presets, sectors=sectors,
+                      watched=watched, find_url=find_url, sort_url=sort_url, aria_sort=aria_sort, columns=FIND_COLUMNS)
 
     @app.get("/learn", response_class=HTMLResponse)
     def learn_page(request: Request):
@@ -673,7 +746,7 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
                 r["account_id"] = ids.get((g["name"], r["symbol"]))
         return render(request, "portfolio.html", active="portfolio", total=val["total"], as_of=val["as_of"],
                       accounts=_records(val["accounts"]), positions_by_account=groups, holdings=holdings, account_names=account_names,
-                      sectors=_records(portfolio.by_group(pos, "sector")), history_chart=market.value_series(hist))
+                      sectors=_records(portfolio.by_group(pos, "sector")), history_chart=_named(market.value_series(hist), lang_of(request, user)))
 
     @app.get("/portfolio/template.csv")
     def portfolio_template(user=Depends(require_user)):
@@ -725,12 +798,23 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
             return flash(request, back_to(request, "/portfolio", "holdings"), "flash.csv_bad", tone="error", why=str(e)[:160])
         return flash(request, back_to(request, "/portfolio", "holdings"), "flash.csv_ok", rows=result["rows"], accounts=len(result["accounts"]))
 
+    def confirm_page(request: Request, action: str, message: str, fields: dict, cancel: str):
+        """The no-JavaScript path for a destructive form: nothing is deleted until this page's
+        own button is pressed. With JavaScript the browser dialog adds confirmed=1 instead."""
+        return render(request, "confirm.html", message=message, action=action, fields=fields,
+                      cancel=_local_path(request.headers.get("referer")) if request.headers.get("referer") else cancel)
+
     @app.post("/portfolio/remove")
-    def portfolio_remove(request: Request, csrf: str = Form(...), account_id: int = Form(...), symbol: str = Form(...), user=Depends(require_user)):
+    def portfolio_remove(request: Request, csrf: str = Form(...), account_id: int = Form(...), symbol: str = Form(...),
+                         confirmed: str = Form(""), user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
         if not any(a["id"] == account_id for a in appdb.accounts(user["id"])):
             return flash(request, back_to(request, "/portfolio", "holdings"), "error.bad_input", tone="error")
+        if confirmed != "1":
+            sym = symbol.strip().upper()
+            return confirm_page(request, "/portfolio/remove", t(lang_of(request, user), "portfolio.remove_confirm", symbol=sym),
+                                {"account_id": account_id, "symbol": sym}, "/portfolio#holdings")
         appdb.remove_holding(account_id, symbol.strip().upper())
         return flash(request, back_to(request, "/portfolio", "holdings"), "flash.holding_removed", symbol=symbol.strip().upper())
 
@@ -752,11 +836,16 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
         return RedirectResponse("/settings", status_code=303)
 
     @app.post("/accounts/delete")
-    def delete_account(request: Request, account_id: int = Form(...), csrf: str = Form(...), user=Depends(require_user)):
+    def delete_account(request: Request, account_id: int = Form(...), csrf: str = Form(...), confirmed: str = Form(""),
+                       user=Depends(require_user)):
         check_csrf(request, csrf)
         writable(request, user)
         acc = next((a for a in appdb.accounts(user["id"]) if a["id"] == account_id), None)
         resp = RedirectResponse("/settings", status_code=303)
+        if acc and confirmed != "1":
+            n = sum(1 for h in appdb.holdings(user["id"]) if h["account_id"] == account_id)
+            return confirm_page(request, "/accounts/delete", t(lang_of(request, user), "settings.remove_account_confirm", name=acc["name"], n=n),
+                                {"account_id": account_id}, "/settings")
         if acc:
             n = appdb.delete_account(account_id)
             flash(request, resp, "flash.account_removed", name=acc["name"], n=n)
@@ -870,7 +959,9 @@ def create_app(settings: Settings | None = None, store: MarketStore | None = Non
 
     @app.get("/api/ohlc/{symbol}")
     def api_ohlc(symbol: str, range: str = "1y", user=Depends(require_user)):
-        return JSONResponse(market.ohlc(store, symbol.upper(), range if range in market.RANGE_SESSIONS else "1y"))
+        if range not in market.RANGE_SESSIONS:
+            return JSONResponse({"error": "unknown range"}, status_code=400)
+        return JSONResponse({**market.ohlc(store, symbol.upper(), range), "range": range})
 
     @app.get("/api/index")
     def api_index(range: str = "6m", user=Depends(require_user)):

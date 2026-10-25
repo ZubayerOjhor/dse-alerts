@@ -271,8 +271,8 @@ def test_find_page_filters_and_presets(env):
     r = client.get("/find?ret20_min=5")                       # GP rose about 8% over 20 sessions, ROBI is flat
     assert "GP" in r.text and 'title="Robi"' not in r.text
     assert client.get("/find?preset=low").status_code == 200 and client.get("/find?preset=volume").status_code == 200
-    r = client.get("/find?pe_min=abc&ret20_min=5")            # junk is ignored, numbers are applied
-    assert r.status_code == 200
+    r = client.get("/find?pe_min=abc&ret20_min=5")            # junk is refused beside the field, the typed text stays
+    assert r.status_code == 400 and "Enter a number." in r.text and 'value="abc"' in r.text and 'value="5"' in r.text
 
 
 def test_learn_page_in_both_languages(env):
@@ -454,7 +454,7 @@ def test_uat_rule_form_errors_stay_on_the_page(client):
     client.post("/watchlist/add", data={"symbol": "GP", "csrf": csrf})
     r = client.post("/symbol/GP/rules", data={"csrf": csrf, "on_big_drop": "on", "big_drop__pct": "abc", "big_drop__days": "7", "note": "typed note"})
     assert r.status_code == 400 and "Enter a number." in r.text and 'value="abc"' in r.text and 'value="7"' in r.text and "typed note" in r.text
-    assert "There is no page" not in r.text and "<details" in r.text and " open" in r.text.split("<details", 1)[1][:80]
+    assert "There is no page" not in r.text and "<details" in r.text and " open" in r.text.split('id="rules"', 1)[1][:80]
     assert 'type="number"' in r.text
 
 
@@ -492,6 +492,8 @@ def test_uat_check_now_reports_and_portfolio_is_editable(client):
     page = client.get("/portfolio").text
     account_id = page.split('name="account_id" value="')[1].split('"')[0]
     r = client.post("/portfolio/remove", data={"csrf": csrf, "account_id": account_id, "symbol": "GP"})
+    assert r.status_code == 200 and "Please confirm" in r.text and "GP: 100" not in r.text   # no JavaScript: a confirmation page first
+    r = client.post("/portfolio/remove", data={"csrf": csrf, "account_id": account_id, "symbol": "GP", "confirmed": "1"})
     assert r.status_code == 303 and "GP removed from your holdings" in client.get("/portfolio").text
 
 
@@ -533,11 +535,14 @@ def test_last_review_thresholds_plural_accounts_and_promises(env):
     page = client.get("/settings").text
     assert "Remove the account UAT test and its 1 holdings?" in page and 'action="/accounts/delete"' in page
     acc = page.split('name="account_id" value="')[1].split('"')[0]
-    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": acc}).status_code == 303
+    r = client.post("/accounts/delete", data={"csrf": csrf, "account_id": acc})
+    assert r.status_code == 200 and "Please confirm" in r.text and 'name="confirmed" value="1"' in r.text
+    assert len(db.holdings(db.user("me@example.com")["id"])) == 1                     # nothing deleted without the second step
+    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": acc, "confirmed": "1"}).status_code == 303
     page = client.get("/settings").text
     assert "Account UAT test removed with 1 holdings." in page and "UAT test</" not in page.split("Accounts")[-1][:10]
     assert db.holdings(db.user("me@example.com")["id"]) == []
-    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": 999}).status_code == 303   # not yours / gone: no error
+    assert client.post("/accounts/delete", data={"csrf": csrf, "account_id": 999, "confirmed": "1"}).status_code == 303   # not yours / gone: no error
     # no mail server in the tests: nothing promises email (the operator sees the installation panel instead)
     client.post("/logout"); client.cookies.clear()
     client.post("/register", data={"email": "two@example.com", "password": "correct horse"})
