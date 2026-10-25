@@ -7,6 +7,10 @@ site hiccup - the caller decides whether a missing day is fatal.
 
 Verified 2026-10-10: the live site serves daily history back to roughly mid-October 2024 only.
 Older history has to come from an archive (see ``archive.py``).
+
+Verified 2026-10-25: dse.com.bd answers 403 to the library's own User-Agent, so every call
+fell through to the slow legacy site (prices) or failed outright (news, dividends, quotes).
+``_tune_session`` gives the shared session a browser User-Agent and a longer timeout.
 """
 
 from __future__ import annotations
@@ -21,6 +25,28 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="bdshare")
 log = logging.getLogger(__name__)
 
 PRICE_COLS = ["symbol", "date", "open", "high", "low", "close", "volume"]
+BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+MIN_TIMEOUT = 45    # seconds; a full day of every instrument from the legacy site takes 10-20 s from a small VM
+
+
+def _tune_session() -> None:
+    """Make the library's shared HTTP session acceptable to dse.com.bd and patient with old.dsebd.org.
+    Idempotent; every public function calls it first so the library is only imported when used."""
+    from bdshare.util import helper
+
+    s = helper._session
+    if getattr(s, "_dse_alerts_tuned", False):
+        return
+    s.headers["User-Agent"] = BROWSER_UA
+    s.headers.setdefault("Accept", "application/json, text/html;q=0.9, */*;q=0.8")
+    original = s.request
+
+    def request(method, url, **kw):
+        kw["timeout"] = max(kw.get("timeout") or 0, MIN_TIMEOUT)
+        return original(method, url, **kw)
+
+    s.request = request
+    s._dse_alerts_tuned = True
 
 
 def _empty(cols: list[str]) -> pd.DataFrame:
@@ -29,6 +55,8 @@ def _empty(cols: list[str]) -> pd.DataFrame:
 
 def market_status() -> str:
     from bdshare import get_market_status
+
+    _tune_session()
 
     try:
         return str(get_market_status()).strip()
@@ -40,6 +68,7 @@ def market_status() -> str:
 def daily_prices(start: dt.date, end: dt.date, symbol: str | None = None) -> pd.DataFrame:
     """Daily OHLCV for one symbol, or every instrument when ``symbol`` is None."""
     from bdshare import get_historical_data
+    _tune_session()
 
     try:
         df = get_historical_data(start.isoformat(), end.isoformat(), symbol or "All Instrument")
@@ -64,6 +93,7 @@ def daily_prices(start: dt.date, end: dt.date, symbol: str | None = None) -> pd.
 def live_quotes() -> pd.DataFrame:
     """Current session quotes for all instruments (ltp, ycp, change, trade, value, volume)."""
     from bdshare import get_current_trade_data
+    _tune_session()
 
     try:
         df = get_current_trade_data()
@@ -78,6 +108,7 @@ def live_quotes() -> pd.DataFrame:
 def psi_news() -> pd.DataFrame:
     """Price-sensitive information feed (latest ~450 items)."""
     from bdshare import get_price_sensitive_news
+    _tune_session()
 
     try:
         df = get_price_sensitive_news()
@@ -93,6 +124,8 @@ def psi_news() -> pd.DataFrame:
 
 def dividend_declarations() -> pd.DataFrame:
     from bdshare import get_dividend_declarations
+
+    _tune_session()
 
     try:
         df = get_dividend_declarations()
@@ -115,6 +148,7 @@ def dividend_declarations() -> pd.DataFrame:
 def trading_codes() -> list[str]:
     """Symbols DSE currently lists as tradeable (equities and mutual funds; bonds excluded)."""
     from bdshare import get_current_trading_code
+    _tune_session()
 
     try:
         df = get_current_trading_code()
@@ -135,6 +169,7 @@ def company_details(symbol: str) -> dict | None:
     """Profile + current fundamentals for one listed company, or None when DSE has no page
     for it (mutual funds, bonds and some debentures)."""
     from bdshare import get_company_details
+    _tune_session()
 
     try:
         d = get_company_details(symbol)
@@ -188,6 +223,7 @@ def market_summary(start: dt.date | None = None, end: dt.date | None = None) -> 
     """Index levels (DSEX, DSES, DS30), turnover and market cap per session.
     Without dates: the last ~30 sessions. With dates: that range (same history floor as prices)."""
     from bdshare import get_market_info, get_market_info_more_data
+    _tune_session()
 
     try:
         df = get_market_info_more_data(start.isoformat(), end.isoformat()) if start and end else get_market_info()
