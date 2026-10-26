@@ -1,105 +1,153 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 460" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 640" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">
   <defs>
-    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker>
     <style>
-      .box { fill: #fcfcfb; stroke: #c3c2b7; stroke-width: 1.2; rx: 8; }
+      .bg { fill: #ffffff; stroke: #e4e8f1; }
+      .box { fill: #fcfcfb; stroke: #c3c2b7; stroke-width: 1.2; }
       .src { fill: #eef4fc; stroke: #2a78d6; }
-      .store { fill: #f0efec; stroke: #898781; }
+      .store { fill: #f3f2ef; stroke: #898781; }
+      .eng { fill: #fff8e8; stroke: #e0a100; }
       .out { fill: #ecf8f1; stroke: #1baf7a; }
-      .t { fill: #0b0b0b; font-weight: 600; }
+      .run { fill: #f1f3fa; stroke: #2f4b9a; }
+      .t { fill: #0b0b0b; font-weight: 650; font-size: 13.5px; }
       .s { fill: #52514e; font-size: 11.5px; }
       .lbl { fill: #6b7280; font-size: 11px; }
       .flow { stroke: #6b7280; stroke-width: 1.4; fill: none; marker-end: url(#arr); }
-      .lane { fill: #898781; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+      .lane { fill: #7b7a74; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+      .foot { fill: #3e4c6d; font-size: 12px; }
     </style>
   </defs>
+  <rect x="0.5" y="0.5" width="1119" height="639" rx="14" class="bg"/>
 
-  <text x="20" y="28" class="lane">SOURCES</text>
-  <rect x="20" y="40" width="200" height="64" class="box src"/>
-  <text x="32" y="62" class="t">dse.com.bd (live)</text>
-  <text x="32" y="80" class="s">daily OHLCV, PSI news, dividends,</text>
-  <text x="32" y="94" class="s">index, company profiles · via bdshare</text>
+  <!-- SOURCES -->
+  <text x="24" y="34" class="lane">SOURCES</text>
+  <rect x="24" y="46" width="214" height="62" rx="8" class="box src"/>
+  <text x="36" y="68" class="t">dse.com.bd (live)</text>
+  <text x="36" y="86" class="s">prices, quotes, news, dividends,</text>
+  <text x="36" y="100" class="s">index, company profiles (bdshare)</text>
 
-  <rect x="20" y="118" width="200" height="64" class="box src"/>
-  <text x="32" y="140" class="t">Curated archive 2012–2026</text>
-  <text x="32" y="158" class="s">Mendeley, CC BY 4.0 · passes the</text>
-  <text x="32" y="172" class="s">circuit-breaker consistency test</text>
+  <rect x="24" y="122" width="214" height="76" rx="8" class="box src"/>
+  <text x="36" y="144" class="t">Archive, Oct 2012 on</text>
+  <text x="36" y="162" class="s">Mendeley DSE dataset (CC BY 4.0)</text>
+  <text x="36" y="176" class="s">audited first: circuit-breaker test,</text>
+  <text x="36" y="190" class="s">duplicates, closures left out</text>
 
-  <rect x="20" y="196" width="200" height="50" class="box src"/>
-  <text x="32" y="218" class="t">Your statements</text>
-  <text x="32" y="236" class="s">holdings.csv · watchlist.json</text>
+  <rect x="24" y="212" width="214" height="62" rx="8" class="box src"/>
+  <text x="36" y="234" class="t">You</text>
+  <text x="36" y="252" class="s">stocks to watch, holdings (by hand</text>
+  <text x="36" y="266" class="s">or CSV template), custom rules</text>
 
-  <text x="300" y="28" class="lane">STORE &amp; FEATURES</text>
-  <rect x="300" y="40" width="220" height="92" class="box store"/>
-  <text x="312" y="62" class="t">DuckDB · market.duckdb</text>
-  <text x="312" y="80" class="s">prices · instruments · fundamentals</text>
-  <text x="312" y="94" class="s">news · dividends · index</text>
-  <text x="312" y="108" class="s">features: returns, vol ratio, SMAs,</text>
-  <text x="312" y="122" class="s">circuit hits, 250-session range</text>
+  <!-- STORE -->
+  <text x="300" y="34" class="lane">STORE AND FEATURES</text>
+  <rect x="300" y="46" width="236" height="96" rx="8" class="box store"/>
+  <text x="312" y="68" class="t">DuckDB: market.duckdb</text>
+  <text x="312" y="86" class="s">prices with adj_factor (bonus, rights)</text>
+  <text x="312" y="100" class="s">news, dividends, index, profiles</text>
+  <text x="312" y="114" class="s">features: returns, volume ratios,</text>
+  <text x="312" y="128" class="s">averages, circuit hits, 250-session range</text>
 
-  <rect x="300" y="146" width="220" height="64" class="box store"/>
-  <text x="312" y="168" class="t">Calibration (14 years)</text>
-  <text x="312" y="186" class="s">per-stock percentiles → symbol_stats</text>
-  <text x="312" y="200" class="s">event study per rule → docs/calibration.md</text>
+  <rect x="300" y="156" width="236" height="62" rx="8" class="box store"/>
+  <text x="312" y="178" class="t">Calibration, 2013 to 2026</text>
+  <text x="312" y="196" class="s">each stock's own 5th / 95th percentiles</text>
+  <text x="312" y="210" class="s">backtest of the 9 price rules</text>
 
-  <rect x="300" y="224" width="220" height="50" class="box store"/>
-  <text x="312" y="246" class="t">SQLite · app.sqlite</text>
-  <text x="312" y="264" class="s">users · watchlists · holdings · alerts · runs</text>
+  <rect x="300" y="232" width="236" height="48" rx="8" class="box store"/>
+  <text x="312" y="252" class="t">Snapshot copy</text>
+  <text x="312" y="270" class="s">read-only copy the website reads</text>
 
-  <text x="600" y="28" class="lane">ENGINE</text>
-  <rect x="600" y="40" width="200" height="118" class="box"/>
-  <text x="612" y="62" class="t">13 rules, facts only</text>
-  <text x="612" y="80" class="s">big move vs own percentiles</text>
-  <text x="612" y="94" class="s">circuit hits &amp; streaks · volume spike</text>
-  <text x="612" y="108" class="s">range breaks · PSI · record dates</text>
-  <text x="612" y="122" class="s">vs DSEX · MA cross · P/E · thin trading</text>
-  <text x="612" y="146" class="s">dedup per user · scorecard afterwards</text>
+  <rect x="300" y="294" width="236" height="62" rx="8" class="box store"/>
+  <text x="312" y="316" class="t">SQLite: app.sqlite</text>
+  <text x="312" y="334" class="s">users, watchlists, rules, holdings,</text>
+  <text x="312" y="348" class="s">alerts sent, AI notes</text>
 
-  <rect x="600" y="172" width="200" height="50" class="box"/>
-  <text x="612" y="194" class="t">AI summary (optional)</text>
-  <text x="612" y="212" class="s">Groq → OpenRouter → Claude; explains, never advises</text>
+  <!-- ENGINE -->
+  <text x="598" y="34" class="lane">ENGINE</text>
+  <rect x="598" y="46" width="226" height="138" rx="8" class="box eng"/>
+  <text x="610" y="68" class="t">13 rules, facts only</text>
+  <text x="610" y="86" class="s">big moves vs the stock's own range</text>
+  <text x="610" y="100" class="s">circuit hits, volume spikes</text>
+  <text x="610" y="114" class="s">250-session highs and lows</text>
+  <text x="610" y="128" class="s">news filings, record dates, vs DSEX</text>
+  <text x="610" y="142" class="s">50-session average, P/E, no trading</text>
+  <text x="610" y="160" class="s">once per event, with the numbers;</text>
+  <text x="610" y="174" class="s">your own % rules on top</text>
 
-  <text x="880" y="28" class="lane">DELIVERY</text>
-  <rect x="880" y="40" width="200" height="40" class="box out"/>
-  <text x="892" y="65" class="t">Email (HTML + text)</text>
-  <rect x="880" y="92" width="200" height="40" class="box out"/>
-  <text x="892" y="117" class="t">Telegram</text>
-  <rect x="880" y="144" width="200" height="40" class="box out"/>
-  <text x="892" y="169" class="t">Local outbox</text>
-  <rect x="880" y="196" width="200" height="78" class="box out"/>
-  <text x="892" y="218" class="t">Web UI · dse web serve</text>
-  <text x="892" y="236" class="s">overview · portfolio · targets · symbol</text>
-  <text x="892" y="250" class="s">alerts · scorecard · rules · 4 themes</text>
-  <text x="892" y="264" class="s">charts vendored; browser talks only to this server</text>
+  <rect x="598" y="198" width="226" height="48" rx="8" class="box eng"/>
+  <text x="610" y="218" class="t">Scorecard</text>
+  <text x="610" y="236" class="s">grades live alerts against the backtest</text>
 
-  <path d="M220,72 L300,72" class="flow"/>
-  <path d="M220,150 L300,86" class="flow"/>
-  <path d="M220,221 L300,249" class="flow"/>
-  <path d="M520,86 L600,86" class="flow"/>
-  <path d="M520,178 L600,120" class="flow"/>
-  <path d="M520,249 L600,140" class="flow"/>
-  <path d="M800,99 L880,60" class="flow"/>
-  <path d="M800,99 L880,112" class="flow"/>
-  <path d="M800,99 L880,164" class="flow"/>
-  <path d="M800,197 L880,235" class="flow"/>
-  <path d="M700,158 L700,172" class="flow"/>
+  <rect x="598" y="260" width="226" height="76" rx="8" class="box eng"/>
+  <text x="610" y="282" class="t">AI note (optional)</text>
+  <text x="610" y="300" class="s">Groq, then OpenRouter, then Claude</text>
+  <text x="610" y="314" class="s">every number checked against input,</text>
+  <text x="610" y="328" class="s">advice and predictions rejected</text>
 
-  <text x="20" y="320" class="lane">RUNS</text>
-  <rect x="20" y="332" width="340" height="96" class="box"/>
-  <text x="32" y="354" class="t">GitHub Actions · 16:30 BDT, Sun–Thu</text>
-  <text x="32" y="372" class="s">market data cached between runs; secrets hold SMTP,</text>
-  <text x="32" y="386" class="s">Telegram, watchlist and holdings; outbox kept as artifact</text>
-  <text x="32" y="404" class="s">Also: Task Scheduler / cron, or docker compose</text>
+  <!-- DELIVERY -->
+  <text x="884" y="34" class="lane">DELIVERY</text>
+  <rect x="884" y="46" width="212" height="62" rx="8" class="box out"/>
+  <text x="896" y="68" class="t">Email</text>
+  <text x="896" y="86" class="s">HTML and text, Gmail SMTP,</text>
+  <text x="896" y="100" class="s">confirmed addresses only</text>
 
-  <rect x="380" y="332" width="340" height="96" class="box"/>
-  <text x="392" y="354" class="t">Data audit before trust</text>
-  <text x="392" y="372" class="s">archive vs live: 100% on 7,062 rows · weekend-session check</text>
-  <text x="392" y="386" class="s">moves beyond the circuit cap: 0.05–0.5%/yr (clean) vs 17–20%</text>
-  <text x="392" y="404" class="s">(the misdated 1999–2022 file, rejected) · docs/data-quality.md</text>
+  <rect x="884" y="122" width="212" height="62" rx="8" class="box out"/>
+  <text x="896" y="144" class="t">Telegram</text>
+  <text x="896" y="162" class="s">same alerts, English or Bangla,</text>
+  <text x="896" y="176" class="s">on self-hosted copies</text>
 
-  <rect x="740" y="332" width="340" height="96" class="box"/>
-  <text x="752" y="354" class="t">Principles</text>
-  <text x="752" y="372" class="s">Your data stays yours: self-hosted, no telemetry, BYO keys</text>
-  <text x="752" y="386" class="s">Alerts are facts, not advice; thresholds are measured,</text>
-  <text x="752" y="404" class="s">not guessed; the system grades its own alerts in public</text>
+  <rect x="884" y="198" width="212" height="138" rx="8" class="box out"/>
+  <text x="896" y="220" class="t">Website</text>
+  <text x="896" y="238" class="s">FastAPI and Jinja2, EN and Bangla</text>
+  <text x="896" y="252" class="s">overview, alerts, portfolio,</text>
+  <text x="896" y="266" class="s">targets, find stocks, symbol pages,</text>
+  <text x="896" y="280" class="s">rules, scorecard, learn</text>
+  <text x="896" y="298" class="s">argon2 passwords, CSRF, rate</text>
+  <text x="896" y="312" class="s">limits, security headers;</text>
+  <text x="896" y="326" class="s">HTTPS by Caddy</text>
+
+  <!-- flows -->
+  <path d="M238,77 H300" class="flow"/>
+  <path d="M238,160 C270,160 270,110 300,110" class="flow"/>
+  <path d="M238,250 C270,250 270,325 300,325" class="flow"/>
+  <path d="M418,142 V156" class="flow"/>
+  <path d="M418,218 V232" class="flow"/>
+  <path d="M536,94 H598" class="flow"/>
+  <path d="M536,187 C566,187 566,150 598,150" class="flow"/>
+  <path d="M536,325 H566 V170 H598" class="flow" style="marker-start:url(#arr)"/>
+  <path d="M824,77 H884" class="flow"/>
+  <path d="M824,120 C852,120 852,153 884,153" class="flow"/>
+  <path d="M711,184 V198" class="flow"/>
+  <path d="M711,246 V260" class="flow"/>
+  <path d="M536,262 H556 V372 H990 V336" class="flow"/>
+  <text x="720" y="366" class="lbl">the website reads the snapshot and the app DB</text>
+
+  <!-- RUNS ON -->
+  <text x="24" y="406" class="lane">HOW IT RUNS</text>
+  <rect x="24" y="418" width="350" height="118" rx="8" class="box run"/>
+  <text x="36" y="440" class="t">Daily chain, 16:30 Dhaka time, Sun to Thu</text>
+  <text x="36" y="460" class="s">1. pull today's prices, news and dividends</text>
+  <text x="36" y="475" class="s">2. stop if DSE has not published the session</text>
+  <text x="36" y="490" class="s">3. rebuild features, 4. run alerts and send</text>
+  <text x="36" y="505" class="s">5. publish the snapshot for the website</text>
+  <text x="36" y="524" class="s">retries every 30 minutes until 21:30</text>
+
+  <rect x="390" y="418" width="350" height="118" rx="8" class="box run"/>
+  <text x="402" y="440" class="t">Hosted: Docker Compose on a VM</text>
+  <text x="402" y="460" class="s">web (uvicorn), scheduler, Caddy (HTTPS)</text>
+  <text x="402" y="475" class="s">one shared data volume, non-root container</text>
+  <text x="402" y="490" class="s">Azure for Students, 1 GB RAM + swap,</text>
+  <text x="402" y="505" class="s">DuckDB memory capped to fit</text>
+  <text x="402" y="524" class="s">scripts/vm-setup.sh sets it all up</text>
+
+  <rect x="756" y="418" width="340" height="118" rx="8" class="box run"/>
+  <text x="768" y="440" class="t">Free: GitHub Actions on your fork</text>
+  <text x="768" y="460" class="s">the same chain on a cron, no server</text>
+  <text x="768" y="475" class="s">market data kept in the Actions cache</text>
+  <text x="768" y="490" class="s">SMTP, Telegram, watchlist and holdings</text>
+  <text x="768" y="505" class="s">in repository secrets</text>
+  <text x="768" y="524" class="s">dry-run button, outbox saved per run</text>
+
+  <!-- principles -->
+  <rect x="24" y="556" width="1072" height="62" rx="8" fill="#14213d"/>
+  <text x="40" y="582" fill="#f2a007" font-weight="700" font-size="12" letter-spacing=".08em">PRINCIPLES</text>
+  <text x="40" y="603" fill="#dce4f5" font-size="12" xml:space="preserve">Facts, not advice: every alert states what happened and the numbers behind it.  Thresholds are measured per stock, not guessed.  Your data stays in your copy.  The system grades its own alerts.</text>
 </svg>

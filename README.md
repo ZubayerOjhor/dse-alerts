@@ -2,31 +2,34 @@
 
 **Self-hosted stock alerts and a personal analytics desk for the Dhaka Stock Exchange.**
 Add the companies you hold or are considering, pick the conditions you care about, and get
-an email and a Telegram message after each session when something happened. Rules are
+an email (and a Telegram message, if you set up a bot) after each session when something happened. Rules are
 tuned to how the DSE actually behaves (circuit-breaker slabs, A/B/Z categories, price-sensitive
-filings, record dates) and calibrated on 14 years of daily data, so an alert means something
+filings, record dates) and calibrated on 13 years of daily data (2013 to 2026), so an alert means something
 instead of firing every other day. The web UI shows what is true about each stock right now,
 values your portfolio, and grades the alerts it sent you.
 
-> **The opposite of a tipping app.** It never tells you what to buy. It tells you what
-> happened, how unusual that is for that stock, and what the record says about such events.
+> **Facts to decide with, not tips.** It tells you what happened, how unusual that is for
+> that stock, and what the record says about such events, so you can decide what to buy,
+> hold or sell with the facts in one place.
 
 **Try it:** a hosted demo lives at <https://dsealerts-bd.indiasouthcentral.cloudapp.azure.com>; press
-*Try the demo* on the login page for a read-only tour, or create an account in ten seconds.
+*Try the demo* on the home page for a read-only tour, or create an account in ten seconds.
 Hosting your own public copy takes one setup script: [docs/hosting.md](docs/hosting.md).
 
 **বাংলা:** the whole thing, pages, emails, Telegram and the AI note, works in Bangla as
 well as English. Switch with the EN / বাং toggle in the header; the choice is saved per user.
 
-![Overview](docs/screens/overview-light.png)
+![The daily alert email](docs/screens/demo.gif)
+
+*The email after a session: real alerts from 26 Oct 2026. [Full walkthrough and overview page below.](#screens)*
 
 ## What you get
 
 | | |
 |---|---|
 | **Alerts** | 13 DSE-specific rules; each one states a fact about the latest session and carries the numbers behind it. Delivered by **email** (HTML, with your portfolio snapshot) and **Telegram**, and kept in a local outbox. |
-| **Calibrated thresholds** | "Big" means big *for that stock*: thresholds come from each company's own history (977k sessions, 2013 to 2026), not from a fixed percentage. Every rule is backtested and the numbers are published. |
-| **Portfolio** | Import your BO statements once; see market value, cost, unrealised P&L, the day's move, value history, allocation by sector, and every position with a 60-session sparkline. Several accounts are fine. |
+| **Calibrated thresholds** | "Big" means big *for that stock*: thresholds come from each company's own history (977k sessions, 2013 to 2026), not from a fixed percentage. The 9 price rules are backtested and the numbers are published. |
+| **Portfolio** | Add holdings by hand or upload them with the CSV template; see market value, cost, unrealised P&L, the day's move, value history, allocation by sector, and every position with a 60-session sparkline. Several accounts are fine. |
 | **Targets** | Companies you are considering, side by side: 20/60/250-session moves, position in the 52-week range, trend vs moving averages, volume, P/E against the sector median, last filing. |
 | **Market today** | On the overview: a sector board coloured by the session's moves, the biggest risers and fallers, and upcoming dividend record dates for your symbols. |
 | **Find stocks** | A simple screener over every stock that traded: sector, category, P/E, 20-session move, volume vs average, distance from the 52-week low or high, with one-click presets. |
@@ -53,7 +56,7 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
 * **Alerts are facts, not advice.** "BEXIMCO closed at its upper circuit, 2.0 times a year
   for this stock" is an alert. "Buy BEXIMCO" is not, and the tool never says it.
 * **Measured, not guessed.** The data was audited before it was trusted, the thresholds come
-  from the history, every rule has a backtest, and the system scores its own alerts.
+  from the history, every price rule has a backtest, and the system scores its own alerts.
 * **Optional extras stay optional.** Email needs an SMTP login; Telegram a bot token; the
   AI summary an API key. Without any of them, alerts still run and land in `data/outbox/`.
 * **Safe to leave on the internet.** Passwords are argon2id hashes; sessions are signed,
@@ -64,6 +67,8 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
   point the operator's mail account or bot at a stranger.
 
 ## Screens
+
+![Overview](docs/screens/overview-light.png)
 
 | Symbol page | Portfolio |
 |---|---|
@@ -78,6 +83,25 @@ More in [docs/screens](docs/screens).
 ## Architecture
 
 ![Architecture](docs/architecture.svg)
+
+| Layer | Stack |
+|---|---|
+| Data | dse.com.bd through bdshare (live), Mendeley DSE archive from Oct 2012 (audited before use) |
+| Storage | DuckDB for market data and features, a read-only snapshot for the website, SQLite for users, holdings and alerts |
+| Analysis | pandas and DuckDB SQL; per-stock percentiles and a backtest on 2013 to 2026 |
+| Engine | 13 rule-based alerts with the evidence attached, a scorecard, an optional AI note that is fact-checked |
+| Delivery | Email over SMTP (HTML and text), Telegram Bot API, a local outbox |
+| Web | FastAPI, Jinja2, plain JavaScript, lightweight-charts; English and Bangla; argon2 and signed cookies |
+| Hosting | Docker Compose (web, scheduler, Caddy for HTTPS) on any VM, or GitHub Actions with no server |
+| Quality | pytest (98 tests), ruff, Playwright layout checks |
+
+**Every trading day at 16:30 Dhaka time** (Sunday to Thursday) the scheduler pulls the
+session's prices, news and dividends, stops if DSE has not published yet, rebuilds the
+features, runs the alerts and sends them, then publishes a fresh snapshot for the website.
+A failed or late step is retried every 30 minutes until 21:30.
+
+Full stack, the daily chain step by step, and the design decisions behind them:
+[docs/architecture.md](docs/architecture.md).
 
 ## Quick start
 
