@@ -1,7 +1,7 @@
 [project]
 name = "dse-alerts"
 version = "0.1.0"
-description = "Self-hosted stock alerts for the Dhaka Stock Exchange: rule-based, calibrated on 25 years of daily data, delivered by email."
+description = "Self-hosted stock alerts for the Dhaka Stock Exchange: rule-based, calibrated per stock on 13 years of daily data (2013 to 2026), delivered by email."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
