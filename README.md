@@ -21,7 +21,7 @@ well as English. Switch with the EN / বাং toggle in the header; the choice
 
 ![The daily alert email](docs/screens/demo.gif)
 
-*The email after a session: real alerts from 26 Oct 2026. [Full walkthrough and overview page below.](#screens)*
+*The email after a session: real alerts from 26 Oct 2026. More [screens](#screens) below.*
 
 ## What you get
 
